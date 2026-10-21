@@ -1,0 +1,133 @@
+name: Release
+
+# Every push to main that passes CI becomes a new version of Luna:
+#   version  <major.minor from Resources/Info.plist>.<number of commits on main>
+#   assets   Luna.dmg (one universal download for Apple Silicon and Intel),
+#            Luna.zip (the update Sparkle installs) and appcast.xml
+# Installed copies read releases/latest/download/appcast.xml and update themselves.
+# Secrets (see CONTRIBUTING.md): SPARKLE_PRIVATE_KEY signs updates; LUNA_CERT_P12 and
+# LUNA_CERT_PASSWORD give every release the same signing identity. Apple Developer ID
+# signing and notarization are optional. Run it by hand to rebuild a commit.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  app:
+    name: Luna for macOS
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: macos-26
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      NOTARIZE: ${{ secrets.APPLE_ID != '' && secrets.APPLE_CERTIFICATE != '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+          # The commit count is the version; the history is the release notes.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Version
+        id: v
+        run: |
+          base=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist)
+          build=$(git rev-list --count HEAD)
+          echo "version=$base.$build" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          if gh release view "v$base.$build" >/dev/null 2>&1; then
+            echo "v$base.$build is already released."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A stable signing identity keeps users' Accessibility permission across updates.
+      - name: Signing identity
+        if: steps.v.outputs.skip != 'true'
+        env:
+          LUNA_CERT_P12: ${{ secrets.LUNA_CERT_P12 }}
+          LUNA_CERT_PASSWORD: ${{ secrets.LUNA_CERT_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          keychain="$RUNNER_TEMP/luna.keychain-db"
+          password=$(openssl rand -base64 24)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/apple.p12"
+            security import "$RUNNER_TEMP/apple.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            echo "LUNA_SIGN_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          elif [ -n "$LUNA_CERT_P12" ]; then
+            echo "$LUNA_CERT_P12" | base64 --decode > "$RUNNER_TEMP/luna.p12"
+            security import "$RUNNER_TEMP/luna.p12" -k "$keychain" -P "$LUNA_CERT_PASSWORD" -T /usr/bin/codesign
+            echo "LUNA_SIGN_IDENTITY=Luna Self-Signed" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No signing certificate; the app is ad-hoc signed and users re-grant Accessibility after each update."
+          fi
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+
+      - name: Build (universal)
+        if: steps.v.outputs.skip != 'true'
+        run: scripts/build-app.sh --universal --version "${{ steps.v.outputs.version }}"
+
+      - name: Notarize (Developer ID only)
+        if: steps.v.outputs.skip != 'true' && env.NOTARIZE == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          ditto -c -k --keepParent build/Luna.app "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple build/Luna.app
+
+      - name: Package
+        if: steps.v.outputs.skip != 'true'
+        run: |
+          mkdir dist
+          scripts/make-dmg.sh build/Luna.app dist/Luna.dmg
+          ditto -c -k --sequesterRsrc --keepParent build/Luna.app dist/Luna.zip
+
+      - name: Publish
+        if: steps.v.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          BUILD: ${{ steps.v.outputs.build }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          # What changed since the last release (or lately, for the first one).
+          prev=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')
+          if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev" >/dev/null; then
+            range="$prev..HEAD"
+          else
+            range="-15"
+          fi
+          git log --no-merges --pretty='- %s' $range > notes.md
+          [ -s notes.md ] || echo "- Maintenance release" > notes.md
+
+          if [ -n "$SPARKLE_PRIVATE_KEY" ]; then
+            signature=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | .build/artifacts/sparkle/Sparkle/bin/sign_update dist/Luna.zip --ed-key-file -)
+            python3 scripts/appcast.py --version "$VERSION" --build "$BUILD" \
+              --url "https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/Luna.zip" \
+              --signature "$signature" --notes notes.md > dist/appcast.xml
+          else
+            echo "::warning::SPARKLE_PRIVATE_KEY isn't set, so this release has no appcast and installed copies won't update to it."
+          fi
+
+          gh release create "v$VERSION" dist/* --target "$SHA" --title "Luna $VERSION" --notes-file notes.md --latest

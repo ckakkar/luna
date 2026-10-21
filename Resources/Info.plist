@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Luna</string>
+	<key>CFBundleExecutable</key>
+	<string>Luna</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>xyz.kkrwhofrags.luna</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Luna</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<!-- major.minor; scripts/build-app.sh appends the number of commits on main. -->
+	<key>CFBundleShortVersionString</key>
+	<string>0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Cyrus Kakkar. MIT License.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Luna uses your location only to know when the sun rises and sets, for Sun auto brightness. It never leaves your Mac.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Luna uses your location only to know when the sun rises and sets, for Sun auto brightness. It never leaves your Mac.</string>
+	<key>SUFeedURL</key>
+	<string>https://github.com/ckakkar/luna/releases/latest/download/appcast.xml</string>
+	<!-- Filled in from Resources/SparklePublicKey.txt by scripts/build-app.sh. -->
+	<key>SUPublicEDKey</key>
+	<string></string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>21600</integer>
+</dict>
+</plist>
