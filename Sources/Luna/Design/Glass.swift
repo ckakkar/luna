@@ -7,6 +7,8 @@ enum Metrics {
     static let cardRadius: CGFloat = 17
     static let sliderHeight: CGFloat = 30
     static let spacing: CGFloat = 8
+    /// Transparent space around the panel inside its window, so the glass's soft shadow isn't cut off.
+    static let panelMargin: CGFloat = 16
 }
 
 enum Palette {

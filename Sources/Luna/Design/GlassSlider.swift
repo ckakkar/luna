@@ -55,16 +55,13 @@ struct GlassSlider: View {
                         color: tone == .boost ? Palette.glow.opacity(0.55) : .black.opacity(0.10),
                         radius: tone == .boost ? 9 : 1.5, y: tone == .boost ? 0 : 0.5)
 
-                HStack(spacing: 0) {
-                    iconView
-                        .frame(width: height, height: height)
-                    Spacer(minLength: 4)
-                    Text(label)
-                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(fillWidth > width - 38 ? onFill.opacity(0.75) : Color.secondary)
-                        .contentTransition(.numericText(value: value))
-                        .padding(.trailing, 11)
-                }
+                iconView
+                    .frame(width: height, height: height)
+
+                // The value, drawn twice: on the track, and in the fill's colour where the fill covers it.
+                valueText(Color.secondary)
+                valueText(onFill.opacity(0.75))
+                    .mask(alignment: .leading) { Rectangle().frame(width: fillWidth) }
             }
             .clipShape(Capsule())
             .contentShape(Capsule())
@@ -93,6 +90,15 @@ struct GlassSlider: View {
     }
 
     private var onFill: Color { tone == .dim ? .white : .black }
+
+    private func valueText(_ color: Color) -> some View {
+        Text(label)
+            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+            .foregroundStyle(color)
+            .contentTransition(.numericText(value: value))
+            .padding(.trailing, 11)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+    }
 
     private var iconView: some View {
         Image(systemName: icon, variableValue: iconValue)

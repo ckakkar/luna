@@ -13,20 +13,24 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var monitors: [Any] = []
     private var glyphPhase = -1.0
     /// The panel content's size, as SwiftUI last reported it.
-    private var contentSize = NSSize(width: Metrics.panelWidth, height: 300)
+    private var contentSize = NSSize(width: Metrics.panelWidth + 2 * Metrics.panelMargin, height: 300)
     /// Stays open whatever is clicked (preview and screenshots).
     var pinned = false
 
     init(model: AppModel) {
         self.model = model
-        hosting = NSHostingController(rootView: AnyView(PanelView().environment(model).focusEffectDisabled()))
+        hosting = NSHostingController(
+            rootView: AnyView(PanelView().environment(model).focusEffectDisabled().padding(Metrics.panelMargin)))
         super.init()
 
         hosting.sizingOptions = [.preferredContentSize]
         panel.contentView = hosting.view
+        // Size changes are reported on the main thread, where the hosting controller lives.
         sizeObservation = hosting.observe(\.preferredContentSize, options: [.initial, .new]) { [weak self] hosting, _ in
-            let size = hosting.preferredContentSize
-            DispatchQueue.main.async { self?.resize(to: size) }
+            MainActor.assumeIsolated {
+                let size = hosting.preferredContentSize
+                DispatchQueue.main.async { self?.resize(to: size) }
+            }
         }
         panel.delegate = self
 
@@ -59,7 +63,8 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func show(centeredOn screen: NSScreen? = nil) {
         guard !isShown else { return }
-        let fitting = hosting.sizeThatFits(in: CGSize(width: Metrics.panelWidth, height: 4000))
+        let fitting = hosting.sizeThatFits(
+            in: CGSize(width: Metrics.panelWidth + 2 * Metrics.panelMargin, height: 4000))
         if fitting.width > 0, fitting.height > 0 { contentSize = fitting }
         let size = contentSize
         let frame: NSRect
@@ -107,13 +112,16 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard let button = statusItem.button, let window = button.window else {
             let screen = NSScreen.main?.visibleFrame ?? .zero
             return NSRect(
-                x: screen.maxX - size.width - 8, y: screen.maxY - size.height - 6, width: size.width,
-                height: size.height)
+                x: screen.maxX - size.width - 8 + Metrics.panelMargin,
+                y: screen.maxY - size.height - 6 + Metrics.panelMargin, width: size.width, height: size.height)
         }
         let anchor = window.convertToScreen(button.convert(button.bounds, to: nil))
         let visible = (window.screen ?? NSScreen.main)?.visibleFrame ?? anchor
-        let x = min(max(anchor.midX - size.width / 2, visible.minX + 8), visible.maxX - size.width - 8)
-        return NSRect(x: x, y: anchor.minY - size.height - 6, width: size.width, height: size.height)
+        // Place the glass itself (inside the margin) 6 pt under the menu bar and 8 pt from the screen's edges.
+        let margin = Metrics.panelMargin
+        let x = min(
+            max(anchor.midX - size.width / 2, visible.minX + 8 - margin), visible.maxX - size.width - 8 + margin)
+        return NSRect(x: x, y: anchor.minY - size.height - 6 + margin, width: size.width, height: size.height)
     }
 
     /// Keeps the top edge in place as the content grows or shrinks.

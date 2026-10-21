@@ -3,7 +3,7 @@
 #
 #   scripts/build-app.sh [--debug] [--universal] [--version X.Y.Z] [--out DIR]
 #
-# --universal  one binary for Apple Silicon and Intel (each built on its own, then joined with lipo)
+# --universal  one binary for Apple Silicon and Intel
 # --version    defaults to <major.minor from Resources/Info.plist>.<commits on HEAD>, like Trav
 #
 # Signing: LUNA_SIGN_IDENTITY if set; otherwise a "Luna Self-Signed" certificate from the keychain if there
@@ -32,19 +32,15 @@ build_number=$(git rev-list --count HEAD 2>/dev/null || echo 1)
 version=${version:-$base.$build_number}
 
 echo "› Building Luna $version ($config$([[ $universal == 1 ]] && echo ', universal'))"
-if [[ $universal == 1 ]]; then
-    binaries=()
-    for arch in arm64 x86_64; do
-        swift build -c "$config" --triple "$arch-apple-macosx14.0" --product Luna
-        binaries+=("$(swift build -c "$config" --triple "$arch-apple-macosx14.0" --show-bin-path)/Luna")
-    done
-    products=$(swift build -c "$config" --triple arm64-apple-macosx14.0 --show-bin-path)
-    binary=$(mktemp -d)/Luna
-    lipo -create "${binaries[@]}" -output "$binary"
-else
-    swift build -c "$config" --product Luna
-    products=$(swift build -c "$config" --show-bin-path)
-    binary="$products/Luna"
+arch_flags=()
+if [[ $universal == 1 ]]; then arch_flags=(--arch arm64 --arch x86_64); fi
+swift build -c "$config" "${arch_flags[@]}" --product Luna
+products=$(swift build -c "$config" "${arch_flags[@]}" --show-bin-path)
+binary="$products/Luna"
+archs=$(lipo -archs "$binary")
+if [[ $universal == 1 && ! ( $archs == *arm64* && $archs == *x86_64* ) ]]; then
+    echo "error: $binary isn't universal ($archs)" >&2
+    exit 1
 fi
 
 app="$out/Luna.app"
@@ -67,7 +63,8 @@ sparkle=$(find "$products" .build/artifacts -name Sparkle.framework -maxdepth 6 
 ditto "$sparkle" "$app/Contents/Frameworks/Sparkle.framework"
 
 identity=${LUNA_SIGN_IDENTITY:-}
-if [[ -z "$identity" ]] && security find-identity -v -p codesigning 2>/dev/null | grep -q "Luna Self-Signed"; then
+# Self-signed certificates aren't "valid" to `find-identity -v` (nobody vouches for them), so no -v.
+if [[ -z "$identity" ]] && security find-identity -p codesigning 2>/dev/null | grep -q "Luna Self-Signed"; then
     identity="Luna Self-Signed"
 fi
 identity=${identity:--}

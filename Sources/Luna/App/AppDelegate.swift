@@ -1,6 +1,7 @@
 import AppKit
 import LunaCore
 import Observation
+import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel!
@@ -10,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var keys: KeyController!
     private var signalSources: [DispatchSourceSignal] = []
     private var glyphTimer: Timer?
+    private var backdrop: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let options = LaunchOptions(arguments: CommandLine.arguments)
@@ -64,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 panel.pinned = true
                 panel.show(centeredOn: NSScreen.main)
+                if options.backdrop { showBackdrop() }
             }
             if options.showHUD, let display = controller.displays.last { keys.showBrightnessHUD(display) }
         } else if !settings.hasOnboarded && !options.openPanel {
@@ -81,6 +84,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Opening Luna again (from Finder or Spotlight) shows the panel.
         panel.show()
         return false
+    }
+
+    /// `--preview --backdrop`: a twilight gradient behind the panel, so screenshots show the glass over
+    /// something without showing anyone's desktop.
+    private func showBackdrop() {
+        guard let screen = NSScreen.main else { return }
+        let size = NSSize(width: 560, height: 980)
+        let frame = NSRect(
+            x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.midY - size.height / 2,
+            width: size.width, height: size.height)
+        let window = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.level = NSWindow.Level(NSWindow.Level.statusBar.rawValue - 1)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: Backdrop())
+        window.orderFrontRegardless()
+        backdrop = window
     }
 
     private func showWelcome() {
@@ -169,6 +188,7 @@ struct LaunchOptions {
     var pane = SettingsPane.general
     /// Opens the panel under the menu bar icon at launch.
     var openPanel = false
+    var backdrop = false
 
     init(arguments: [String]) {
         preview = arguments.contains("--preview")
@@ -185,6 +205,7 @@ struct LaunchOptions {
         showHUD = arguments.contains("--hud")
         expanded = arguments.contains("--expanded")
         openPanel = arguments.contains("--open")
+        backdrop = arguments.contains("--backdrop")
         if let index = arguments.firstIndex(of: "--settings"), index + 1 < arguments.count {
             switch arguments[index + 1] {
             case "displays": pane = .displays(nil)
@@ -193,6 +214,25 @@ struct LaunchOptions {
             case "about": pane = .about
             default: break
             }
+        }
+    }
+}
+
+/// Dusk: indigo sky, a violet band and the last warm light near the horizon, with a soft moon glow.
+private struct Backdrop: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.16, green: 0.18, blue: 0.45), Color(red: 0.42, green: 0.30, blue: 0.62),
+                    Color(red: 0.93, green: 0.55, blue: 0.48), Color(red: 0.99, green: 0.80, blue: 0.60),
+                ], startPoint: .top, endPoint: .bottom)
+            RadialGradient(
+                colors: [Color.white.opacity(0.55), .clear], center: UnitPoint(x: 0.78, y: 0.16), startRadius: 4,
+                endRadius: 220)
+            RadialGradient(
+                colors: [Color(red: 0.35, green: 0.85, blue: 0.95).opacity(0.35), .clear],
+                center: UnitPoint(x: 0.1, y: 0.62), startRadius: 10, endRadius: 300)
         }
     }
 }

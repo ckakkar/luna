@@ -4,9 +4,9 @@
 
 APP_DIR ?= /Applications
 
-# The Command Line Tools keep Swift Testing's macro plugin outside the default search path.
-CLT_TESTING_PLUGINS := /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
-TEST_FLAGS := $(if $(wildcard $(CLT_TESTING_PLUGINS)),-Xswiftc -plugin-path -Xswiftc $(CLT_TESTING_PLUGINS),)
+# With only the Command Line Tools, Swift Testing's macro plugin sits outside the default search path.
+CLT := /Library/Developer/CommandLineTools
+TEST_FLAGS := $(if $(filter $(CLT),$(shell xcode-select -p 2>/dev/null)),-Xswiftc -plugin-path -Xswiftc $(CLT)/usr/lib/swift/host/plugins/testing,)
 
 help: ## Show this list
 	@awk 'BEGIN {FS = ":.*## "} /^[a-z0-9-]+:.*## / {printf "  \033[1m%-10s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)

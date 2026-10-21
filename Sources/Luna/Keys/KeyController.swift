@@ -45,7 +45,8 @@ final class KeyController {
         }
         if let tap, CGEvent.tapIsEnabled(tap: tap) { return }
         stop()
-        let mask = CGEventMask(1 << 14) | CGEventMask(1 << CGEventType.keyDown.rawValue)  // NX_SYSDEFINED
+        // Only NX_SYSDEFINED events (the media keys); Luna never sees ordinary typing.
+        let mask = CGEventMask(1 << 14)
         guard
             let tap = CGEvent.tapCreate(
                 tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: mask,
@@ -92,14 +93,6 @@ final class KeyController {
 
     /// Returns true when Luna handled the event and macOS shouldn't see it.
     fileprivate func handle(_ event: CGEvent, type: CGEventType) -> Bool {
-        if type == .keyDown {
-            // F14/F15 are the brightness keys on keyboards without media keys.
-            let code = event.getIntegerValueField(.keyboardEventKeycode)
-            let modifiers = event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift])
-            guard modifiers.isEmpty, code == 107 || code == 113 else { return false }
-            return brightness(up: code == 113, fine: false)
-        }
-
         guard let nsEvent = NSEvent(cgEvent: event), nsEvent.subtype.rawValue == 8 else { return false }
         let data = nsEvent.data1
         guard let key = MediaKey(rawValue: (data & 0xFFFF_0000) >> 16) else { return false }
