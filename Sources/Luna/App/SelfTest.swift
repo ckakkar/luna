@@ -98,12 +98,17 @@ final class SelfTest {
         let original = display.level
         display.setXDR(true)
         try? await Task.sleep(for: .milliseconds(1500))
-        check(display.isBoosting, "\(display.name): XDR overlay up")
+        check(display.isBoosting, "\(display.name): XDR boosting")
+        if display.dimMethod == .gamma, let peak = gammaPeak(display.id) {
+            // The colour-table lift is what survives Space swipes and full-screen video.
+            check(peak > 1.05, "\(display.name): XDR lifts the colour table (peak \(fmt(peak)))")
+        }
         let current = NSScreen.with(displayID: display.id)?.maximumExtendedDynamicRangeColorComponentValue ?? 1
         check(current > 1.01, "\(display.name): macOS opened the HDR headroom (\(fmt(Double(current))))")
         display.setXDR(false)
         try? await Task.sleep(for: .milliseconds(500))
-        check(!display.isBoosting, "\(display.name): XDR overlay gone")
+        check(!display.isBoosting, "\(display.name): XDR off")
+        check((gammaPeak(display.id) ?? 1) <= 1.001, "\(display.name): colour table back to normal")
         if wasOn { display.setXDR(true) }
         display.setLevel(original, byUser: false)
     }

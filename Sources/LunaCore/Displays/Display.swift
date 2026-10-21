@@ -67,9 +67,15 @@ public final class Display: Identifiable {
         didSet { ddc?.timing = settings.slowDDC ? .slow : .normal }
     }
     @ObservationIgnored private var ddcMaximum: [UInt8: UInt16] = [:]
+    /// XDR without a colour table: the multiply overlay (fallback).
     @ObservationIgnored private var edr: EDROverlay?
-    /// The XDR overlay is up.
-    public var isBoosting: Bool { edr != nil }
+    /// Keeps the display's HDR headroom open while the colour table is lifted, where it isn't open anyway.
+    @ObservationIgnored private var edrTrigger: EDRTrigger?
+    /// How far XDR lifts the colour table (1 = not at all).
+    @ObservationIgnored private var gammaBoost = 1.0
+    @ObservationIgnored private var boostWatch: Timer?
+    /// XDR is lifting the display's brightness right now.
+    public var isBoosting: Bool { edr != nil || gammaBoost > 1.001 }
     @ObservationIgnored private var transition: Task<Void, Never>?
     @ObservationIgnored private var touchedDuringProbe = false
     /// Brightness notifications caused by Luna's own writes are ignored until then.
@@ -106,7 +112,21 @@ public final class Display: Identifiable {
         return systemName
     }
 
-    public var isXDRCapable: Bool { edrHeadroom > 1.05 }
+    /// Apple's XDR panels (MacBook Pro, Pro Display XDR) keep their extra brightness in the backlight, so XDR
+    /// makes everything brighter.
+    public var hasXDRPanel: Bool {
+        edrHeadroom > 1.05 && (kind == .builtin || identity.vendor == Self.appleVendor)
+    }
+
+    /// HDR monitors report headroom too, but in HDR mode macOS already runs normal content near the panel's
+    /// peak (about 1.2× left at full brightness), so it makes room for XDR by dimming everything else. The boost
+    /// then nets out dimmer, and wherever it can't reach (Space swipes, video) the screen visibly dips. Off
+    /// unless asked for.
+    public var offersXDROnHDRMonitor: Bool { edrHeadroom > 1.05 && !hasXDRPanel }
+
+    public var isXDRCapable: Bool { hasXDRPanel || (offersXDROnHDRMonitor && settings.allowXDR) }
+
+    static let appleVendor = 0x0610
     public var hasHardwareBrightness: Bool { control == .apple || control == .ddc || control == .preview }
 
     /// The monitor answers DDC but keeps its values to itself, so Luna can't tell which controls it has.
@@ -325,25 +345,81 @@ public final class Display: Identifiable {
             break
         }
         if control != .preview {
-            let factor = SoftwareDimming.factor(level, hardware: control != .software)
-            Dimmer.shared.set(factor, for: id, method: dimMethod)
-            applyEDR()
+            updateBoost()
+            applySoftware()
         }
     }
 
-    private func applyEDR() {
+    /// Dimming below 0% and the XDR lift share the colour table: one factor for both.
+    private func applySoftware() {
+        let factor = SoftwareDimming.factor(level, hardware: control != .software) * gammaBoost
+        Dimmer.shared.set(factor, for: id, method: dimMethod)
+    }
+
+    /// XDR: brighter than 100% by lifting the display's colour table into its HDR headroom. The table is applied
+    /// by the display pipeline after macOS has composited everything, so the boost holds through Space swipes,
+    /// Mission Control and full-screen video (Netflix), which an overlay can't reach. Displays without a
+    /// colour table (AirPlay, DisplayLink) fall back to the multiply overlay.
+    private func updateBoost() {
         guard xdr, isXDRCapable, level.boost > 0.001, let screen = NSScreen.with(displayID: id) else {
-            edr?.close()
-            edr = nil
+            stopBoost()
             return
         }
         // Past ~3.2× highlights clip and colours wash out, even where the panel has more headroom.
         let multiplier = 1 + level.boost * (min(edrHeadroom, 3.2) - 1)
-        if let edr {
-            edr.multiplier = multiplier
-        } else {
-            edr = EDROverlay(screen: screen, multiplier: multiplier)
+
+        guard dimMethod == .gamma, Dimmer.shared.hasColourTable(id) else {
+            gammaBoost = 1
+            if let edr {
+                edr.multiplier = multiplier
+            } else {
+                edr = EDROverlay(screen: screen, multiplier: multiplier)
+            }
+            return
         }
+        edr?.close()
+        edr = nil
+
+        let headroom = Double(screen.maximumExtendedDynamicRangeColorComponentValue)
+        // An XDR panel opens its headroom while HDR content is on screen, as far as that content asks for: the
+        // trigger is that content.
+        if headroom < multiplier - 0.05, edrTrigger == nil {
+            edrTrigger = EDRTrigger(
+                screen: screen, value: multiplier, avoidingCorner: app.roundedCorners ? app.cornerRadius * 1.6 : 0)
+        }
+        edrTrigger?.value = multiplier
+        // The table works on gamma-encoded values, so the lift for a given gain in light is its 2.2th root.
+        gammaBoost = headroom > 1.05 ? pow(min(multiplier, headroom), 1 / 2.2) : 1
+        startBoostWatch()
+    }
+
+    /// macOS resets colour tables now and then (waking, display changes, some full-screen video) and the
+    /// headroom moves with the backlight; checking every second brings a lost boost back within a moment.
+    private func startBoostWatch() {
+        guard boostWatch == nil else { return }
+        boostWatch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshBoost() }
+        }
+    }
+
+    private func refreshBoost() {
+        let before = gammaBoost
+        updateBoost()
+        if abs(gammaBoost - before) > 0.001 {
+            applySoftware()
+        } else {
+            Dimmer.shared.restoreIfReset(id)
+        }
+    }
+
+    private func stopBoost() {
+        boostWatch?.invalidate()
+        boostWatch = nil
+        edrTrigger?.close()
+        edrTrigger = nil
+        edr?.close()
+        edr = nil
+        gammaBoost = 1
     }
 
     private func writeDDC(_ vcp: UInt8, _ fraction: Double) {
@@ -362,8 +438,7 @@ public final class Display: Identifiable {
 
     func detach() {
         transition?.cancel()
-        edr?.close()
-        edr = nil
+        stopBoost()
         Dimmer.shared.reset(id)
     }
 
@@ -371,6 +446,7 @@ public final class Display: Identifiable {
         guard let screen = NSScreen.with(displayID: id) else { return }
         edrHeadroom = Double(screen.maximumPotentialExtendedDynamicRangeColorComponentValue)
         edr?.move(to: screen)
+        edrTrigger?.move(to: screen)
     }
 
     // MARK: Finding out what the monitor can do

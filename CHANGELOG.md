@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- With XDR on, the screen dimmed for a moment when switching Spaces, changing pages in Safari or playing Netflix.
+  - **Apple XDR displays:** XDR now lifts the display's colour table into its HDR headroom instead of laying a multiplying window over the screen. The display pipeline applies the table after macOS has drawn everything, so the boost holds through Space swipes, Mission Control and full-screen video. The overlay remains only for displays without a colour table.
+  - **HDR monitors:** XDR is no longer offered by default. In HDR mode macOS already runs normal content near the monitor's peak (about 1.2× left at full brightness), so XDR made macOS dim everything else, and the screen dipped wherever the boost couldn't reach. Opt in under Settings › Displays › Advanced.
 - Luna 0.1.4 quit a second after opening on Macs where macOS reports brightness changes for the display: the brightness callback ran on DisplayServices' own thread and tripped Swift's main-thread check. Callbacks from macOS now hop to the main thread themselves.
 
 ### Changed

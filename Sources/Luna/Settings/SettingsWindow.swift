@@ -349,6 +349,21 @@ private struct DisplayForm: View {
                             Text("LG").tag(InputMethod.lg)
                         }
                     }
+                    if display.offersXDROnHDRMonitor {
+                        Toggle(
+                            isOn: Binding(
+                                get: { display.settings.allowXDR },
+                                set: { on in
+                                    if !on { display.setXDR(false) }
+                                    display.updateSettings { $0.allowXDR = on }
+                                })
+                        ) {
+                            Text("Offer XDR on this HDR monitor")
+                            Text(
+                                "Rarely brighter: macOS dims everything else to make room, so the screen can dip during Space swipes and in videos."
+                            )
+                        }
+                    }
                     Picker(
                         "Dimming below 0%",
                         selection: Binding(
