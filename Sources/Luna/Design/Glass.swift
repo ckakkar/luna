@@ -95,16 +95,20 @@ struct CircleIconButton: View {
     var tint: Color = .primary
     var action: () -> Void
 
+    @ViewState private var hovering = false
+
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(tint)
                 .frame(width: 24, height: 24)
-                .background(Circle().fill(Color.primary.opacity(0.08)))
+                .background(Circle().fill(Color.primary.opacity(hovering ? 0.15 : 0.08)))
                 .contentShape(Circle())
         }
         .buttonStyle(PressableStyle())
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
         .help(help)
         .accessibilityLabel(help)
     }

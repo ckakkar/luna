@@ -11,6 +11,8 @@ final class AppModel {
     var keysEnabled = false
     /// A newer Luna found by a background check, waiting to be installed.
     var availableUpdate: String?
+    /// Counts openings of the panel, so its content can animate in each time.
+    var panelOpenCount = 0
     /// `--preview --expanded`: cards start with their extra options showing.
     @ObservationIgnored var previewExpanded = false
 

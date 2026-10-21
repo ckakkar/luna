@@ -71,23 +71,11 @@ struct DisplayCard: View {
         if zones.boostWidth > 0 { markers.append(zones.fullPosition) }
         let level = display.level
         let tone: GlassSlider.Tone = level.dim > 0 ? .dim : level.boost > 0 ? .boost : .normal
-        let icon =
-            level.dim > 0
-            ? "moon.fill" : level.boost > 0 ? "sun.max.fill" : level.brightness < 0.5 ? "sun.min.fill" : "sun.max.fill"
         return GlassSlider(
-            value: display.position, icon: icon, label: brightnessLabel, tone: tone, markers: markers,
+            value: display.position, icon: display.brightnessSymbol, label: display.brightnessLabel, tone: tone,
+            markers: markers,
             accessibilityName: "\(display.name) brightness"
         ) { display.setPosition($0) }
-    }
-
-    private var brightnessLabel: String {
-        let level = display.level
-        if level.dim > 0 { return "−\(Int((level.dim * 100).rounded()))%" }
-        if level.boost > 0 {
-            let multiplier = 1 + level.boost * (min(display.edrHeadroom, 3.2) - 1)
-            return "\(Int((multiplier * 100).rounded()))%"
-        }
-        return "\(Int((level.brightness * 100).rounded()))%"
     }
 
     // MARK: Volume

@@ -148,21 +148,11 @@ final class KeyController {
 
     func showBrightnessHUD(_ display: Display) {
         let level = display.level
-        let icon = level.dim > 0 ? "moon.fill" : level.boost > 0 ? "sun.max.fill" : "sun.max"
         let tone: GlassSlider.Tone = level.dim > 0 ? .dim : level.boost > 0 ? .boost : .normal
-        let label: String
-        let value: Double
-        if level.dim > 0 {
-            label = "−\(Int((level.dim * 100).rounded()))%"
-            value = 1 - level.dim
-        } else if level.boost > 0 {
-            label = "XDR"
-            value = level.boost
-        } else {
-            label = "\(Int((level.brightness * 100).rounded()))%"
-            value = level.brightness
-        }
-        HUD.shared.show(on: display.id, icon: icon, value: value, label: label, tone: tone)
+        // The bar shows how far into the current zone (dimming, normal or XDR) the display is.
+        let value = level.dim > 0 ? 1 - level.dim : level.boost > 0 ? level.boost : level.brightness
+        HUD.shared.show(
+            on: display.id, icon: display.brightnessSymbol, value: value, label: display.brightnessLabel, tone: tone)
     }
 
     // MARK: Volume

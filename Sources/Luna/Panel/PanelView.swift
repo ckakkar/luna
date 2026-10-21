@@ -1,9 +1,11 @@
+import AppKit
 import LunaCore
 import SwiftUI
 
 /// The menu bar panel: a card per display, then auto brightness and rounded corners.
 struct PanelView: View {
     @Environment(AppModel.self) private var model
+    @ViewState private var appeared = true
 
     private var controller: DisplayController { model.controller }
     private var settings: AppSettings { model.settings }
@@ -50,6 +52,14 @@ struct PanelView: View {
         .padding(12)
         .frame(width: Metrics.panelWidth)
         .glassSurface(cornerRadius: Metrics.panelRadius)
+        // Unfolds from the menu bar as it opens, like Control Center.
+        .scaleEffect(appeared ? 1 : 0.94, anchor: .top)
+        .opacity(appeared ? 1 : 0)
+        .onChange(of: model.panelOpenCount) {
+            guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+            appeared = false
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) { appeared = true }
+        }
         .animation(.luna, value: controller.displays.map(\.id))
         .animation(.luna, value: controller.disabled)
         .animation(.luna, value: showsKeysBanner)
@@ -221,7 +231,7 @@ private struct UpdateBanner: View {
                 .foregroundStyle(.green.gradient)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Luna \(version) is ready").font(.system(size: 12, weight: .semibold))
-                Text("See what's new, then install and relaunch").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("See what's new and install").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
             Button("Update") {
@@ -269,17 +279,32 @@ struct ChipButtonStyle: ButtonStyle {
     var prominent = false
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 11, weight: .semibold))
-            .padding(.horizontal, 10)
-            .frame(height: 24)
-            .foregroundStyle(prominent ? Color.white : Color.primary)
-            .background(
-                Capsule().fill(
-                    prominent ? AnyShapeStyle(Color.accentColor.gradient) : AnyShapeStyle(Color.primary.opacity(0.09)))
-            )
-            .opacity(configuration.isPressed ? 0.7 : 1)
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(.snappy(duration: 0.15), value: configuration.isPressed)
+        Chip(configuration: configuration, prominent: prominent)
+    }
+
+    private struct Chip: View {
+        var configuration: Configuration
+        var prominent: Bool
+        @ViewState private var hovering = false
+
+        var body: some View {
+            configuration.label
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 10)
+                .frame(height: 24)
+                .foregroundStyle(prominent ? Color.white : Color.primary)
+                .background(
+                    Capsule().fill(
+                        prominent
+                            ? AnyShapeStyle(Color.accentColor.gradient)
+                            : AnyShapeStyle(Color.primary.opacity(hovering ? 0.15 : 0.09)))
+                )
+                .brightness(prominent && hovering ? 0.06 : 0)
+                .opacity(configuration.isPressed ? 0.7 : 1)
+                .scaleEffect(configuration.isPressed ? 0.97 : 1)
+                .onHover { hovering = $0 }
+                .animation(.snappy(duration: 0.15), value: configuration.isPressed)
+                .animation(.easeOut(duration: 0.12), value: hovering)
+        }
     }
 }
