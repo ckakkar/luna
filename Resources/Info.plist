@@ -44,7 +44,8 @@
 	<string></string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<!-- Hourly, like Trav. -->
 	<key>SUScheduledCheckInterval</key>
-	<integer>21600</integer>
+	<integer>3600</integer>
 </dict>
 </plist>

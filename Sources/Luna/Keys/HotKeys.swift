@@ -41,18 +41,22 @@ final class HotKeys {
         guard !installed else { return }
         installed = true
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(
-            GetApplicationEventTarget(),
-            { _, event, _ in
-                var id = EventHotKeyID()
-                GetEventParameter(
-                    event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
-                    MemoryLayout<EventHotKeyID>.size, nil, &id)
-                let number = id.id
-                MainActor.assumeIsolated { HotKeys.shared.fire(number) }
-                return noErr
-            }, 1, &spec, nil, nil)
+        InstallEventHandler(GetApplicationEventTarget(), hotKeyPressed, 1, &spec, nil, nil)
     }
+}
+
+/// Carbon calls this on the main thread. A plain function, not a closure written in main-actor code, so
+/// Swift adds no isolation check of its own to a callback it doesn't control.
+nonisolated private func hotKeyPressed(
+    _ handler: EventHandlerCallRef?, _ event: EventRef?, _ context: UnsafeMutableRawPointer?
+) -> OSStatus {
+    var id = EventHotKeyID()
+    GetEventParameter(
+        event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
+        MemoryLayout<EventHotKeyID>.size, nil, &id)
+    let number = id.id
+    DispatchQueue.main.async { HotKeys.shared.fire(number) }
+    return noErr
 }
 
 /// Shortcuts as text: "⌃⌥⌘B".

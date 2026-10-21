@@ -1,6 +1,6 @@
 # Common tasks for Luna; run `make` for the list. `make check` mirrors CI.
 .DEFAULT_GOAL := help
-.PHONY: help run preview install dmg check build test lint fmt icons clean
+.PHONY: help run preview selftest install dmg check build test lint fmt icons clean
 
 APP_DIR ?= /Applications
 
@@ -21,6 +21,11 @@ preview: ## The panel with made-up displays, for design work (ARGS="--dark --dis
 	scripts/build-app.sh --debug --out build/debug
 	build/debug/Luna.app/Contents/MacOS/Luna --preview $(ARGS) &
 
+selftest: ## Drive the real app against your displays and check every feature (the screen flickers)
+	@pkill -x Luna 2>/dev/null || true
+	scripts/build-app.sh --out build/test
+	build/test/Luna.app/Contents/MacOS/Luna --self-test
+
 install: ## Build Luna.app and install it in /Applications
 	@if pgrep -f "$(APP_DIR)/Luna.app/Contents/MacOS/" >/dev/null; then echo "Quit Luna first (◐ › Quit Luna), then run make install again."; exit 1; fi
 	scripts/build-app.sh
@@ -28,7 +33,7 @@ install: ## Build Luna.app and install it in /Applications
 	cp -R build/Luna.app "$(APP_DIR)/"
 	@echo "Installed $(APP_DIR)/Luna.app."
 
-dmg: ## Universal Luna.app and Luna.dmg in build/
+dmg: ## Universal Luna.app and Luna.dmg (with its designed window) in build/
 	scripts/build-app.sh --universal
 	scripts/make-dmg.sh build/Luna.app build/Luna.dmg
 

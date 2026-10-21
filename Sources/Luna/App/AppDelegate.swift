@@ -58,6 +58,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.panel.updateGlyph() }
         }
 
+        if options.selfTest {
+            let test = SelfTest(model: model, panel: panel, keys: keys, settingsWindow: settingsWindow)
+            Task { await test.run() }
+            return
+        }
+
         if options.preview {
             if options.showSettings {
                 settingsWindow.show(options.pane)
@@ -69,6 +75,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if options.backdrop { showBackdrop() }
             }
             if options.showHUD, let display = controller.displays.last { keys.showBrightnessHUD(display) }
+        } else if options.quiet {
+            // Nothing on screen but the menu bar icon (scripted runs, like the update test).
         } else if !settings.hasOnboarded && !options.openPanel {
             showWelcome()
         } else if options.openPanel {
@@ -189,6 +197,8 @@ struct LaunchOptions {
     /// Opens the panel under the menu bar icon at launch.
     var openPanel = false
     var backdrop = false
+    var selfTest = false
+    var quiet = false
 
     init(arguments: [String]) {
         preview = arguments.contains("--preview")
@@ -206,6 +216,8 @@ struct LaunchOptions {
         expanded = arguments.contains("--expanded")
         openPanel = arguments.contains("--open")
         backdrop = arguments.contains("--backdrop")
+        selfTest = arguments.contains("--self-test")
+        quiet = arguments.contains("--quiet")
         if let index = arguments.firstIndex(of: "--settings"), index + 1 < arguments.count {
             switch arguments[index + 1] {
             case "displays": pane = .displays(nil)

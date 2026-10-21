@@ -9,6 +9,8 @@ final class AppModel {
     let updater: Updater
     /// Accessibility is granted, so the brightness and volume keys work.
     var keysEnabled = false
+    /// A newer Luna found by a background check, waiting to be installed.
+    var availableUpdate: String?
     /// `--preview --expanded`: cards start with their extra options showing.
     @ObservationIgnored var previewExpanded = false
 
@@ -20,6 +22,7 @@ final class AppModel {
     init(controller: DisplayController, updater: Updater) {
         self.controller = controller
         self.updater = updater
+        updater.onAvailable = { [weak self] version in self?.availableUpdate = version }
     }
 
     var settings: AppSettings { controller.settings }

@@ -292,6 +292,8 @@ public final class DisplayController {
 
     // MARK: Rounded corners
 
+    public var cornerWindowCount: Int { corners.windowCount }
+
     public func updateCorners() {
         guard !isPreview else { return }
         if settings.roundedCorners {

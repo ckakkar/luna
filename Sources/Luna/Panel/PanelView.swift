@@ -12,6 +12,11 @@ struct PanelView: View {
         VStack(spacing: Metrics.spacing) {
             header
 
+            if let version = model.availableUpdate {
+                UpdateBanner(version: version)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             if controller.displays.count > 1 {
                 AllDisplaysCard()
                     .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
@@ -48,6 +53,7 @@ struct PanelView: View {
         .animation(.luna, value: controller.displays.map(\.id))
         .animation(.luna, value: controller.disabled)
         .animation(.luna, value: showsKeysBanner)
+        .animation(.luna, value: model.availableUpdate)
     }
 
     private var showsKeysBanner: Bool {
@@ -200,6 +206,32 @@ private struct QuickSettings: View {
         case .sync: "Following your Mac's display"
         case .sun: "Following daylight"
         }
+    }
+}
+
+/// A newer Luna is waiting: one click shows what changed and installs it.
+private struct UpdateBanner: View {
+    @Environment(AppModel.self) private var model
+    var version: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 17))
+                .foregroundStyle(.green.gradient)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Luna \(version) is ready").font(.system(size: 12, weight: .semibold))
+                Text("See what's new, then install and relaunch").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            Button("Update") {
+                model.closePanel()
+                model.updater.checkForUpdates()
+            }
+            .buttonStyle(ChipButtonStyle(prominent: true))
+        }
+        .padding(12)
+        .platter()
     }
 }
 
