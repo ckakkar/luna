@@ -55,7 +55,11 @@ Controls appear only when a display supports them. A monitor that doesn't speak 
 
 **Below 0%.** Even at its lowest, a backlight can be too bright in a dark room. The left end of the brightness slider (past the small tick) dims further in software, down to about a tenth of the light. The slider turns moonlight blue and shows how far below zero you are. Turn this off in Settings › General › **Dim below 0%**.
 
-**XDR.** MacBook Pros with a Liquid Retina XDR display, the Pro Display XDR and HDR monitors (with HDR on) can shine brighter than their normal maximum; macOS keeps that headroom for HDR video. Choose **XDR** and the brightness slider grows a golden zone past 100%: everything on screen gets brighter, up to about three times. Use it outdoors or in a bright room. It uses more power and warms the display, and very bright whites can lose detail, so switch back to **SDR** when you don't need it. The brightness-up key at 100% switches to XDR too (Settings › General).
+**XDR.** Apple's XDR displays have a backlight that can shine brighter than their normal maximum; macOS keeps that extra for HDR video. That means MacBook Pros with a Liquid Retina XDR display and the Pro Display XDR. On those, choose **XDR** and the brightness slider grows a golden zone past 100%. Everything on screen gets brighter, up to about three times. Use it outdoors or in a bright room.
+
+Luna lifts the display's colour table into that extra range, so the boost holds through Space swipes, Mission Control and full-screen video. It uses more power and warms the display, and very bright whites can lose detail, so switch back to **SDR** when you don't need it. The brightness-up key at 100% switches to XDR too (Settings › General).
+
+**HDR monitors** (with HDR turned on in System Settings) don't get XDR by default. In HDR mode macOS already runs normal content close to the monitor's peak, so there's little left. To make room, macOS would dim everything else, and the screen dips whenever the boost can't reach it: in Space swipes, page transitions and video. For the brightest everyday picture on such a monitor, turn its **High Dynamic Range** off in System Settings › Displays, and back on for HDR films. To try XDR anyway, turn on **Offer XDR on this HDR monitor** under Settings › Displays › Advanced.
 
 ## Keys and shortcuts
 
@@ -141,7 +145,9 @@ No analytics, no account. The only network traffic is the update check to GitHub
 
 **Input switching does nothing on an LG.** Set **Input switching** to **LG** under Advanced.
 
-**XDR doesn't appear.** It needs a display with HDR headroom. On an external HDR monitor, turn on **High Dynamic Range** for it in System Settings › Displays first.
+**XDR doesn't appear.** It's offered on Apple's XDR displays. For other HDR monitors, see [Below 0% and XDR](#below-0-and-xdr).
+
+**The screen dims for a moment when switching Spaces, in Safari or in Netflix.** This happens when XDR is on for an HDR monitor: macOS dims everything to make room for the boost. Switch that display to **SDR**, or turn off **Offer XDR on this HDR monitor**.
 
 **The keys don't work.** Settings › Keyboard should say they're working. If not:
 1. Click **Enable…**.

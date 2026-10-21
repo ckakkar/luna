@@ -41,6 +41,8 @@ public struct DisplaySettings: Codable, Equatable, Sendable {
     public var showVolume = true
     /// For monitors that answer DDC without reporting values: offer contrast, volume and input anyway.
     public var showAllControls = false
+    /// Offer XDR on an HDR monitor that isn't one of Apple's XDR panels (it rarely helps there; see Display).
+    public var allowXDR = false
 
     public var level: Level?
     public var baseContrast: Double?

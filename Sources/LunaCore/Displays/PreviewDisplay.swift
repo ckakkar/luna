@@ -33,7 +33,8 @@ public struct PreviewDisplay: Sendable {
     func makeDisplay(index: Int, app: AppSettings, store: DisplayStore) -> Display {
         let id = CGDirectDisplayID(1000 + index)
         let display = Display(
-            id: id, uuid: "preview-\(name)", name: name, kind: kind, identity: DisplayIdentity(name: name),
+            id: id, uuid: "preview-\(name)", name: name, kind: kind,
+            identity: DisplayIdentity(vendor: kind == .apple ? Display.appleVendor : nil, name: name),
             control: .preview, app: app, store: store)
         display.xdr = xdr
         display.edrHeadroom = edrHeadroom
