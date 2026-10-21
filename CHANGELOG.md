@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Luna 0.1.4 quit a second after opening on Macs where macOS reports brightness changes for the display: the brightness callback ran on DisplayServices' own thread and tripped Swift's main-thread check. Callbacks from macOS now hop to the main thread themselves.
+
+### Changed
+- Updates work like Trav's: Luna checks soon after it opens and every hour (was every six hours). An update found in the background puts a dot on the menu bar moon and an **Update** card in the panel, instead of a window popping up mid-task.
+- The disk image opens to a designed window: Luna and Applications on a dusk sky, with an arrow between them and the one-time **Open Anyway** step spelled out.
+
+### Added
+- `make selftest` (`Luna --self-test`) checks every feature against your real displays.
+
 ### Added
 - **The panel.** A Liquid Glass panel from the menu bar (frosted material before macOS 26), with a card per display. Each card has a Control Center–style brightness slider; volume, SDR/XDR and input appear only where the display supports them. **All displays** appears with more than one display, and **Auto** and **Rounded corners** sit at the bottom. The menu bar moon fills out with brightness.
 - **Brightness for every display.**

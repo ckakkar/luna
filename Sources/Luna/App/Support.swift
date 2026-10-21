@@ -27,19 +27,32 @@ enum LaunchAtLogin {
     }
 }
 
-/// Sparkle updates. Only builds that carry an update key (releases) check; local builds don't.
-final class Updater {
-    private let controller: SPUStandardUpdaterController?
+/// Updates, like Trav's: Luna checks GitHub soon after it opens and then every hour, shows what changed, and
+/// installs and relaunches. Only builds that carry an update key (releases) check; local builds don't.
+///
+/// A menu bar app shouldn't throw a window in front of whatever you're doing, so an update found by a
+/// background check is announced gently (a dot on the menu bar moon and a card in the panel) and Sparkle's
+/// window opens when you click it. One found right after launch shows Sparkle's window at once.
+final class Updater: NSObject {
+    private var controller: SPUStandardUpdaterController?
+    /// Called with the new version when one is waiting, and nil once it's dealt with.
+    var onAvailable: (String?) -> Void = { _ in }
+    private var announcedAt: Date?
 
-    init() {
+    override init() {
+        super.init()
         let info = Bundle.main.infoDictionary ?? [:]
         let key = (info["SUPublicEDKey"] as? String) ?? ""
         let feed = (info["SUFeedURL"] as? String) ?? ""
-        if !key.isEmpty, !feed.isEmpty {
-            controller = SPUStandardUpdaterController(
-                startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
-        } else {
-            controller = nil
+        guard !key.isEmpty, !feed.isEmpty else { return }
+        controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: self)
+
+        // Sparkle's own schedule waits a full interval after the last check; check soon after launch too.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+            guard let updater = self?.controller?.updater, updater.automaticallyChecksForUpdates,
+                updater.canCheckForUpdates
+            else { return }
+            updater.checkForUpdatesInBackground()
         }
     }
 
@@ -52,9 +65,43 @@ final class Updater {
 
     var isAvailable: Bool { controller != nil }
 
+    /// Opens Sparkle's window: the waiting update with its notes, or a fresh check.
     func checkForUpdates() {
         NSApp.activate(ignoringOtherApps: true)
         controller?.checkForUpdates(nil)
+    }
+}
+
+// Sparkle calls its user driver delegate on the main thread.
+extension Updater: @preconcurrency SPUStandardUserDriverDelegate {
+    var supportsGentleScheduledUpdateReminders: Bool { true }
+
+    func standardUserDriverShouldHandleShowingScheduledUpdate(
+        _ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool
+    ) -> Bool {
+        // Right after launch, or if the dot has been ignored for a day, show the window itself.
+        immediateFocus || (announcedAt.map { Date().timeIntervalSince($0) > 86400 } ?? false)
+    }
+
+    func standardUserDriverWillHandleShowingUpdate(
+        _ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState
+    ) {
+        if handleShowingUpdate {
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            if announcedAt == nil { announcedAt = Date() }
+            onAvailable(update.displayVersionString)
+        }
+    }
+
+    func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) {
+        announcedAt = nil
+        onAvailable(nil)
+    }
+
+    func standardUserDriverWillFinishUpdateSession() {
+        announcedAt = nil
+        onAvailable(nil)
     }
 }
 

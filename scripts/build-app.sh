@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Builds Luna.app from the Swift package; there is no Xcode project.
 #
-#   scripts/build-app.sh [--debug] [--universal] [--version X.Y.Z] [--out DIR]
+#   scripts/build-app.sh [--debug] [--universal] [--version X.Y.Z] [--build N] [--out DIR]
 #
 # --universal  one binary for Apple Silicon and Intel
 # --version    defaults to <major.minor from Resources/Info.plist>.<commits on HEAD>, like Trav
+# --build      CFBundleVersion, which Sparkle compares; defaults to the number of commits on HEAD
 #
 # Signing: LUNA_SIGN_IDENTITY if set; otherwise a "Luna Self-Signed" certificate from the keychain if there
 # is one (a stable identity keeps the Accessibility permission across updates); otherwise ad-hoc.
@@ -15,12 +16,14 @@ cd "$(dirname "$0")/.."
 config=release
 universal=0
 version=""
+build_number=""
 out=build
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --debug) config=debug ;;
         --universal) universal=1 ;;
         --version) version="$2"; shift ;;
+        --build) build_number="$2"; shift ;;
         --out) out="$2"; shift ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
@@ -28,7 +31,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 base=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist)
-build_number=$(git rev-list --count HEAD 2>/dev/null || echo 1)
+build_number=${build_number:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}
 version=${version:-$base.$build_number}
 
 echo "› Building Luna $version ($config$([[ $universal == 1 ]] && echo ', universal'))"

@@ -114,7 +114,9 @@ With two or more displays, **⏻** on a card turns that display off as if it wer
 
 ## Updates
 
-Luna checks GitHub for a new version every few hours and offers to install it (⚙︎ › **Check for Updates…** to check now). Updates are signed, and Luna installs only one whose signature matches the key built into it. Turn automatic checks off in Settings › General.
+Every change published to Luna's GitHub repository becomes a new version within minutes. Luna checks for one shortly after it opens and every hour, and ⚙︎ › **Check for Updates…** checks right away.
+
+When one is found, a dot appears on the menu bar moon and the panel shows **Luna x.y.z is ready**. Click **Update** to see what changed, then **Install Update**. Luna downloads it, verifies its signature (it refuses anything not signed with the project's key), replaces itself and reopens. If the dot goes unnoticed for a day, the update window opens by itself. Turn the automatic check off in Settings › General.
 
 ## Permissions and privacy
 

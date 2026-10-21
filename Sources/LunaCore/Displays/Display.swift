@@ -68,6 +68,8 @@ public final class Display: Identifiable {
     }
     @ObservationIgnored private var ddcMaximum: [UInt8: UInt16] = [:]
     @ObservationIgnored private var edr: EDROverlay?
+    /// The XDR overlay is up.
+    public var isBoosting: Bool { edr != nil }
     @ObservationIgnored private var transition: Task<Void, Never>?
     @ObservationIgnored private var touchedDuringProbe = false
     /// Brightness notifications caused by Luna's own writes are ignored until then.
@@ -294,7 +296,7 @@ public final class Display: Identifiable {
         settings.minBrightness + level.brightness * (settings.maxBrightness - settings.minBrightness)
     }
 
-    var dimMethod: Dimmer.Method {
+    public var dimMethod: Dimmer.Method {
         switch settings.dimMethod {
         case .gamma: .gamma
         case .overlay: .overlay

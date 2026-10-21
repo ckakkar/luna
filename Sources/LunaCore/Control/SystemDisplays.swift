@@ -31,14 +31,11 @@ public final class BrightnessObserver {
         self.display = display
         self.onChange = onChange
         Self.observers[display] = self
-        registered =
-            LunaDSRegisterForBrightnessChanges(display, Self.token(display)) { _, observer, _, _, userInfo in
-                guard let observer, let info = (userInfo as NSDictionary?) as? [String: Any],
-                    let value = (info["value"] as? NSNumber)?.doubleValue
-                else { return }
-                let display = CGDirectDisplayID(UInt(bitPattern: observer) - 1)
-                Task { @MainActor in BrightnessObserver.observers[display]?.onChange(value) }
-            } == 0
+        registered = LunaDSRegisterForBrightnessChanges(display, Self.token(display), brightnessDidChange) == 0
+    }
+
+    fileprivate static func notify(_ display: CGDirectDisplayID, _ value: Double) {
+        observers[display]?.onChange(value)
     }
 
     public func stop() {
@@ -50,9 +47,23 @@ public final class BrightnessObserver {
     private static var observers: [CGDirectDisplayID: BrightnessObserver] = [:]
 
     // The callback can't capture context, so the display ID travels as the observer pointer.
-    private static func token(_ display: CGDirectDisplayID) -> UnsafeRawPointer {
+    fileprivate static func token(_ display: CGDirectDisplayID) -> UnsafeRawPointer {
         UnsafeRawPointer(bitPattern: UInt(display) + 1)!
     }
+}
+
+/// DisplayServices calls this on a queue of its own, never the main thread. It must not be isolated to the
+/// main actor (as a closure written inside `BrightnessObserver` would be, which traps at runtime); it only
+/// reads the arguments and hops to the main actor.
+private func brightnessDidChange(
+    _ center: CFNotificationCenter?, _ observer: UnsafeMutableRawPointer?, _ name: CFNotificationName?,
+    _ object: UnsafeRawPointer?, _ userInfo: CFDictionary?
+) {
+    guard let observer, let info = (userInfo as NSDictionary?) as? [String: Any],
+        let value = (info["value"] as? NSNumber)?.doubleValue
+    else { return }
+    let display = CGDirectDisplayID(UInt(bitPattern: observer) - 1)
+    Task { @MainActor in BrightnessObserver.notify(display, value) }
 }
 
 /// Turning a display off without unplugging it: macOS detaches it as if disconnected, and the other displays

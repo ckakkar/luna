@@ -12,6 +12,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var sizeObservation: NSKeyValueObservation?
     private var monitors: [Any] = []
     private var glyphPhase = -1.0
+    private var glyphBadge = false
     /// The panel content's size, as SwiftUI last reported it.
     private var contentSize = NSSize(width: Metrics.panelWidth + 2 * Metrics.panelMargin, height: 300)
     /// Stays open whatever is clicked (preview and screenshots).
@@ -103,9 +104,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     func updateGlyph() {
         let display = model.controller.displayUnderPointer
         let phase = display?.position ?? 0.6
-        guard abs(phase - glyphPhase) > 0.02 else { return }
+        let badge = model.availableUpdate != nil
+        guard abs(phase - glyphPhase) > 0.02 || badge != glyphBadge else { return }
         glyphPhase = phase
-        statusItem.button?.image = MoonGlyph.menuBarImage(brightness: phase)
+        glyphBadge = badge
+        statusItem.button?.image = MoonGlyph.menuBarImage(brightness: phase, badge: badge)
     }
 
     private func frameBelowStatusItem(size: NSSize) -> NSRect {

@@ -3,10 +3,19 @@ import AppKit
 /// Luna's menu bar mark: a crescent moon that fills out as brightness rises, from a sliver to nearly full.
 enum MoonGlyph {
     /// A template image for the menu bar (macOS tints it). `brightness` 0…1 sets how full the moon is.
-    static func menuBarImage(brightness: Double) -> NSImage {
+    /// `badge` adds a dot at the top right (an update is waiting).
+    static func menuBarImage(brightness: Double, badge: Bool = false) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { rect in
             draw(in: rect.insetBy(dx: 2, dy: 2), brightness: brightness)
+            if badge {
+                // Clear a ring around the dot so it reads against the moon.
+                NSGraphicsContext.current?.compositingOperation = .clear
+                NSBezierPath(ovalIn: NSRect(x: 11, y: 11, width: 7, height: 7)).fill()
+                NSGraphicsContext.current?.compositingOperation = .sourceOver
+                NSColor.black.setFill()
+                NSBezierPath(ovalIn: NSRect(x: 12.5, y: 12.5, width: 4.5, height: 4.5)).fill()
+            }
             return true
         }
         image.isTemplate = true

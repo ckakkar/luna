@@ -6,6 +6,8 @@ import AppKit
 @MainActor
 public final class CornerMask {
     private var windows: [ClickThroughWindow] = []
+    /// How many corner windows are up (four per screen when on).
+    public var windowCount: Int { windows.count }
     private var radius: CGFloat = 0
 
     public init() {}
