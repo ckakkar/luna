@@ -24,15 +24,27 @@ public final class DisplayController {
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var brightnessObservers: [CGDirectDisplayID: BrightnessObserver] = [:]
+    /// Turns a display off or on; replaced in tests.
+    @ObservationIgnored var setDisplayEnabled: (Bool, CGDirectDisplayID) -> Bool = { enabled, id in
+        DisplayPower.setEnabled(enabled, display: id)
+    }
+    /// Whether this Mac can turn displays off; on in tests that exercise it.
+    @ObservationIgnored var canSwitchDisplays: Bool
 
     public init(settings: AppSettings, store: DisplayStore = DisplayStore(), preview: [PreviewDisplay]? = nil) {
         self.settings = settings
         self.store = store
         isPreview = preview != nil
+        canSwitchDisplays = preview == nil && DisplayPower.isAvailable
         auto = AutoBrightness(controller: self)
         if let preview {
             displays = preview.enumerated().map { $1.makeDisplay(index: $0, app: settings, store: store) }
         }
+    }
+
+    /// Replaces the display list (tests only).
+    func setDisplaysForTesting(_ list: [Display]) {
+        displays = list
     }
 
     // MARK: Lifecycle
@@ -69,7 +81,7 @@ public final class DisplayController {
         for display in displays { display.detach() }
         Dimmer.shared.resetAll()
         corners.hide()
-        for item in disabled { DisplayPower.setEnabled(true, display: item.id) }
+        for item in disabled { _ = setDisplayEnabled(true, item.id) }
         settings.disabledDisplays = []
         auto.stop()
         for observer in brightnessObservers.values { observer.stop() }
@@ -267,24 +279,28 @@ public final class DisplayController {
 
     // MARK: Turning displays off
 
-    /// Only with another display left to show things on.
+    /// Only with another display left to show things on. Counts displays still on, so a second click before
+    /// the display list catches up can't turn off the last one.
     public func canTurnOff(_ display: Display) -> Bool {
-        !isPreview && displays.count > 1 && DisplayPower.isAvailable
+        let stillOn = displays.filter { candidate in !disabled.contains { $0.id == candidate.id } }
+        return canSwitchDisplays && stillOn.count > 1 && stillOn.contains { $0 === display }
     }
 
     public func turnOff(_ display: Display) {
         guard canTurnOff(display) else { return }
         let item = DisabledDisplay(id: display.id, name: display.name)
         display.detach()
-        if DisplayPower.setEnabled(false, display: display.id) {
+        if setDisplayEnabled(false, display.id) {
             disabled.append(item)
             settings.disabledDisplays.append(item.id)
+            // Gone from the panel at once; the refresh confirms it.
+            displays.removeAll { $0 === display }
             scheduleRefresh()
         }
     }
 
     public func turnOn(_ item: DisabledDisplay) {
-        DisplayPower.setEnabled(true, display: item.id)
+        _ = setDisplayEnabled(true, item.id)
         disabled.removeAll { $0.id == item.id }
         settings.disabledDisplays.removeAll { $0 == item.id }
         scheduleRefresh()
