@@ -110,6 +110,20 @@ import Testing
         #expect(result == [1: 0])
     }
 
+    // #6
+    @Test func aNewTwinNeverGetsAChannelAlreadyInUse() {
+        // Two identical monitors without serials, on two ports.
+        let twin = DisplayIdentity(vendor: 0x1E6D, product: 0x5B71, week: 46, year: 2021, width: 600, height: 340)
+        let first = FramebufferIdentity(edidUUID: lgFramebuffer.edidUUID, ioLocation: "IOService:/dispext0")
+        let second = FramebufferIdentity(edidUUID: lgFramebuffer.edidUUID, ioLocation: "IOService:/dispext1")
+        // The display already connected holds the first port's service; the newcomer is matched alone.
+        let result = DisplayMatching.assign(
+            displays: [(9, twin)], framebuffers: [first, second], excluding: [first.key])
+        #expect(result == [9: 1])
+        // Without the exclusion it would tie and take the first, the one in use.
+        #expect(DisplayMatching.assign(displays: [(9, twin)], framebuffers: [first, second]) == [9: 0])
+    }
+
     @Test func readsCoreDisplayInfo() {
         let info: [String: Any] = [
             "DisplayVendorID": 0x1E6D, "DisplayProductID": 0x5B71, "DisplayYearManufacture": 2021,

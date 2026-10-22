@@ -136,7 +136,9 @@ public final class DisplayController {
             ($0.kind == .external || $0.kind == .apple) && $0.ddc == nil && $0.settings.method != .software
         }
         if !needDDC.isEmpty {
-            let channels = DDCDiscovery.channels(for: needDDC.map { ($0.id, $0.identity) })
+            // Channels already driving a connected display stay theirs.
+            let taken = Set(next.compactMap { $0.ddc?.key })
+            let channels = DDCDiscovery.channels(for: needDDC.map { ($0.id, $0.identity) }, excluding: taken)
             for display in needDDC {
                 if let channel = channels[display.id] {
                     display.ddc = channel
