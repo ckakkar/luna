@@ -99,9 +99,11 @@ public final class AutoBrightness {
 
     // MARK: Location
 
+    /// Sun mode starts from the time-zone guess. macOS is asked for the real location only when you click
+    /// "Use my location"; if you've already allowed it, Luna uses it without asking again.
     private func ensureLocation() {
         if settings.location == nil { settings.location = Self.approximateLocation() }
-        if settings.location?.approximate == true { requestLocation() }
+        if settings.location?.approximate == true, LocationProvider.isAuthorized { requestLocation() }
     }
 
     /// Asks macOS where the Mac is (once; it's remembered). Without permission Luna keeps the guess.
@@ -134,6 +136,14 @@ public final class AutoBrightness {
 /// One-shot location lookup.
 @MainActor
 final class LocationProvider: NSObject, CLLocationManagerDelegate {
+    /// Location access was granted before, so asking for the position shows no prompt.
+    static var isAuthorized: Bool {
+        switch CLLocationManager().authorizationStatus {
+        case .authorizedAlways, .authorized: true
+        default: false
+        }
+    }
+
     private let manager = CLLocationManager()
     private var completion: ((CLLocationCoordinate2D?) -> Void)?
 
