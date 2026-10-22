@@ -6,14 +6,57 @@ import SwiftUI
 struct PanelView: View {
     @Environment(AppModel.self) private var model
     @ViewState private var appeared = true
+    @ViewState private var contentHeight: CGFloat = 0
 
     private var controller: DisplayController { model.controller }
     private var settings: AppSettings { model.settings }
+
+    /// Room the header takes above the scrolling part: its height, the gap below it and the panel's padding.
+    private static let headerAllowance: CGFloat = 70
+
+    private var scrollLimit: CGFloat { max(160, model.panelMaxHeight - Self.headerAllowance) }
 
     var body: some View {
         VStack(spacing: Metrics.spacing) {
             header
 
+            // As tall as the cards, up to what the screen allows; beyond that (many displays, all expanded) it
+            // scrolls. The scroll view is always there, so expanding a card never rebuilds the others.
+            ScrollView(.vertical) {
+                content
+                    .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { contentHeight = $0 }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(height: min(contentHeight, scrollLimit))
+            // When there's more below, the last few points fade out instead of being cut off.
+            .mask {
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: contentHeight > scrollLimit ? 0.9 : 1),
+                        .init(color: contentHeight > scrollLimit ? .clear : .black, location: 1),
+                    ], startPoint: .top, endPoint: .bottom)
+            }
+        }
+        .padding(12)
+        .frame(width: Metrics.panelWidth)
+        .glassSurface(cornerRadius: Metrics.panelRadius)
+        // Unfolds from the menu bar as it opens, like Control Center.
+        .scaleEffect(appeared ? 1 : 0.94, anchor: .top)
+        .opacity(appeared ? 1 : 0)
+        .onChange(of: model.panelOpenCount) {
+            guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+            appeared = false
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) { appeared = true }
+        }
+        .animation(.luna, value: controller.displays.map(\.id))
+        .animation(.luna, value: controller.disabled)
+        .animation(.luna, value: showsKeysBanner)
+        .animation(.luna, value: model.availableUpdate)
+    }
+
+    private var content: some View {
+        VStack(spacing: Metrics.spacing) {
             if let version = model.availableUpdate {
                 UpdateBanner(version: version)
                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -49,21 +92,6 @@ struct PanelView: View {
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
-        .padding(12)
-        .frame(width: Metrics.panelWidth)
-        .glassSurface(cornerRadius: Metrics.panelRadius)
-        // Unfolds from the menu bar as it opens, like Control Center.
-        .scaleEffect(appeared ? 1 : 0.94, anchor: .top)
-        .opacity(appeared ? 1 : 0)
-        .onChange(of: model.panelOpenCount) {
-            guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
-            appeared = false
-            withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) { appeared = true }
-        }
-        .animation(.luna, value: controller.displays.map(\.id))
-        .animation(.luna, value: controller.disabled)
-        .animation(.luna, value: showsKeysBanner)
-        .animation(.luna, value: model.availableUpdate)
     }
 
     private var showsKeysBanner: Bool {
