@@ -20,7 +20,10 @@ Luna controls the brightness, volume and more of every display on your Mac, from
 
 ## Install
 
-Download **[Luna.dmg](https://github.com/ckakkar/luna/releases/latest/download/Luna.dmg)**, open it and drag **Luna** into Applications. One download runs on Apple Silicon and Intel Macs (macOS 14 Sonoma or later). From then on Luna [keeps itself up to date](#updates).
+Download **[Luna.dmg](https://github.com/ckakkar/luna/releases/latest/download/Luna.dmg)**, open it and drag **Luna** into Applications.
+
+<p align="center"><img src="docs/dmg.png" width="560" alt="Luna's disk image window: drag Luna into Applications"></p>
+ One download runs on Apple Silicon and Intel Macs (macOS 14 Sonoma or later). From then on Luna [keeps itself up to date](#updates).
 
 > **First launch:** Luna isn't notarized by Apple (that needs a paid developer account), so the first time macOS says it can't verify Luna. Open **System Settings › Privacy & Security**, scroll to the message about Luna and click **Open Anyway**. You only do this once; updates install without asking again.
 
