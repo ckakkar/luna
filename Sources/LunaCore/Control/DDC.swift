@@ -130,28 +130,34 @@ public final class DDCChannel: @unchecked Sendable {
         if wait > 0 { usleep(useconds_t(min(wait, 10) * 1_000_000)) }
     }
 
+    /// Sends one waiting write, then queues itself again behind whatever else is waiting (other monitors'
+    /// writes, reads). A monitor whose slider is being dragged keeps refilling its writes; taking turns means
+    /// it can't hold up the others until the drag stops.
     private func drain() {
-        while true {
-            waitIfPaused()
-            let next: (vcp: UInt8, value: UInt16, source: UInt8, timing: DDCTiming)? = lock.withLock {
-                while !order.isEmpty {
-                    let vcp = order.removeFirst()
-                    if let entry = pending.removeValue(forKey: vcp) { return (vcp, entry.value, entry.source, _timing) }
-                }
-                draining = false
-                return nil
+        waitIfPaused()
+        let next: (vcp: UInt8, value: UInt16, source: UInt8, timing: DDCTiming)? = lock.withLock {
+            while !order.isEmpty {
+                let vcp = order.removeFirst()
+                if let entry = pending.removeValue(forKey: vcp) { return (vcp, entry.value, entry.source, _timing) }
             }
-            guard let next else { return }
-            let packet = DDCPacket.write(next.vcp, value: next.value, source: next.source)
-            // Monitors drop the odd message; sending each twice is what makes DDC feel reliable.
-            var sent = false
-            for _ in 0..<next.timing.attempts where !sent {
-                usleep(next.timing.writeGap)
-                sent = transport.write(packet, source: next.source)
-                usleep(next.timing.writeGap)
-                sent = transport.write(packet, source: next.source) || sent
-            }
+            draining = false
+            return nil
         }
+        guard let next else { return }
+        let packet = DDCPacket.write(next.vcp, value: next.value, source: next.source)
+        // Monitors drop the odd message; sending each twice is what makes DDC feel reliable.
+        var sent = false
+        for _ in 0..<next.timing.attempts where !sent {
+            usleep(next.timing.writeGap)
+            sent = transport.write(packet, source: next.source)
+            usleep(next.timing.writeGap)
+            sent = transport.write(packet, source: next.source) || sent
+        }
+        let more = lock.withLock {
+            if order.isEmpty { draining = false }
+            return !order.isEmpty
+        }
+        if more { Self.queue.async { self.drain() } }
     }
 
     private func readNow(_ vcp: UInt8) -> DDCPacket.Reply {
