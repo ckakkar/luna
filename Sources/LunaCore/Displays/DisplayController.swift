@@ -301,6 +301,14 @@ public final class DisplayController {
         for display in displays { display.setPosition(position) }
     }
 
+    /// After "Dim below 0%" is turned off nothing may stay dimmed: displays below 0% go to 0%.
+    public func dimmingSettingChanged() {
+        guard !settings.allowDimming else { return }
+        for display in displays where display.level.dim > 0 {
+            display.setLevel(Level(brightness: 0), byUser: false)
+        }
+    }
+
     // MARK: Turning displays off
 
     /// Only with another display left to show things on. Counts displays still on, so a second click before

@@ -164,3 +164,16 @@ import Testing
         #expect(await Fixtures.eventually { abs(display.level.brightness - 0.4) < 1e-9 })
     }
 }
+
+@Suite @MainActor struct DimmingSettingTests {
+    // #14
+    @Test func turningOffDimBelowZeroUndimsDisplays() {
+        let (controller, displays) = Fixtures.controller([(.external, .preview), (.builtin, .preview)])
+        displays[0].setLevel(Level(dim: 0.5, brightness: 0), byUser: false)
+        displays[1].setLevel(Level(brightness: 0.6), byUser: false)
+        controller.settings.allowDimming = false
+        controller.dimmingSettingChanged()
+        #expect(displays[0].level == Level(brightness: 0))
+        #expect(displays[1].level == Level(brightness: 0.6))
+    }
+}
