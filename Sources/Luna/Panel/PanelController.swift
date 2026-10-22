@@ -78,6 +78,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         panel.setFrame(frame, display: true)
         panel.alphaValue = 0
+        model.panelOpenCount += 1
         panel.makeKeyAndOrderFront(nil)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.16

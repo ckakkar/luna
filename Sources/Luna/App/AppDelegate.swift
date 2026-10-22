@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         model = AppModel(controller: controller, updater: Updater())
         model.previewExpanded = options.expanded
+        if options.preview, options.showUpdate { model.availableUpdate = "0.2.0" }
         panel = PanelController(model: model)
         settingsWindow = SettingsWindowController(model: model)
         keys = KeyController(model: model)
@@ -74,7 +75,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panel.show(centeredOn: NSScreen.main)
                 if options.backdrop { showBackdrop() }
             }
-            if options.showHUD, let display = controller.displays.last { keys.showBrightnessHUD(display) }
+            if options.showHUD, let display = controller.displays.last {
+                // Late enough for a screenshot taken a few seconds after launch to catch it.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
+                    self?.keys.showBrightnessHUD(display)
+                }
+            }
         } else if options.quiet {
             // Nothing on screen but the menu bar icon (scripted runs, like the update test).
         } else if !settings.hasOnboarded && !options.openPanel {
@@ -197,6 +203,7 @@ struct LaunchOptions {
     /// Opens the panel under the menu bar icon at launch.
     var openPanel = false
     var backdrop = false
+    var showUpdate = false
     var selfTest = false
     var quiet = false
 
@@ -216,6 +223,7 @@ struct LaunchOptions {
         expanded = arguments.contains("--expanded")
         openPanel = arguments.contains("--open")
         backdrop = arguments.contains("--backdrop")
+        showUpdate = arguments.contains("--update")
         selfTest = arguments.contains("--self-test")
         quiet = arguments.contains("--quiet")
         if let index = arguments.firstIndex(of: "--settings"), index + 1 < arguments.count {

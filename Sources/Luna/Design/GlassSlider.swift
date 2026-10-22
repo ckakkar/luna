@@ -25,6 +25,7 @@ struct GlassSlider: View {
     var onChange: (Double) -> Void
 
     @ViewState private var dragging = false
+    @ViewState private var hovering = false
     @ViewState private var tappingIcon = false
     @ViewState private var lastMarkerSide: [Int] = []
     @Environment(\.colorScheme) private var scheme
@@ -38,7 +39,7 @@ struct GlassSlider: View {
 
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.primary.opacity(scheme == .dark ? 0.13 : 0.11))
+                    .fill(Color.primary.opacity((scheme == .dark ? 0.13 : 0.11) + (hovering ? 0.03 : 0)))
                     .overlay(
                         Capsule().strokeBorder(Color.primary.opacity(contrast == .increased ? 0.4 : 0), lineWidth: 1))
 
@@ -65,6 +66,9 @@ struct GlassSlider: View {
             }
             .clipShape(Capsule())
             .contentShape(Capsule())
+            // Changes from elsewhere (keys, auto brightness) glide; the slider follows a drag exactly.
+            .animation(dragging ? nil : .smooth(duration: 0.28), value: value)
+            .onHover { hovering = $0 }
             .gesture(drag(travel: travel))
         }
         .frame(height: height)

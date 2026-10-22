@@ -141,6 +141,21 @@ public final class Display: Identifiable {
         SliderZones(dimming: app.allowDimming, xdr: xdr && isXDRCapable)
     }
 
+    /// Brightness as words for the panel and the indicator: "72%", "−40%" below zero, "221%" in XDR.
+    public var brightnessLabel: String {
+        if level.dim > 0 { return "−\(Int((level.dim * 100).rounded()))%" }
+        if level.boost > 0 { return "\(Int((xdrMultiplier * 100).rounded()))%" }
+        return "\(Int((level.brightness * 100).rounded()))%"
+    }
+
+    /// The symbol for the current brightness: a moon below zero, a small or full sun above.
+    public var brightnessSymbol: String {
+        level.dim > 0 ? "moon.fill" : level.boost > 0 || level.brightness >= 0.5 ? "sun.max.fill" : "sun.min.fill"
+    }
+
+    /// How much XDR multiplies the light: 1 at 100%, up to the panel's headroom (at most 3.2).
+    public var xdrMultiplier: Double { 1 + level.boost * (min(edrHeadroom, 3.2) - 1) }
+
     /// The brightness slider's position, 0…1 along its track.
     public var position: Double { zones.position(of: level) }
 
@@ -366,7 +381,7 @@ public final class Display: Identifiable {
             return
         }
         // Past ~3.2× highlights clip and colours wash out, even where the panel has more headroom.
-        let multiplier = 1 + level.boost * (min(edrHeadroom, 3.2) - 1)
+        let multiplier = xdrMultiplier
 
         guard dimMethod == .gamma, Dimmer.shared.hasColourTable(id) else {
             gammaBoost = 1

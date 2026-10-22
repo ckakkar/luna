@@ -23,14 +23,15 @@ enum MoonGlyph {
         return image
     }
 
-    /// The disc minus a second disc offset toward the top left: the further the offset, the fuller the moon.
+    /// The disc minus a second disc offset toward the top left: a thin crescent when dim, a bold one when
+    /// bright. It never fills to a full disc, which at menu bar size reads as a dot rather than a moon.
     static func draw(in rect: NSRect, brightness: Double) {
         let r = min(rect.width, rect.height) / 2
         let center = NSPoint(x: rect.midX, y: rect.midY)
-        let shift = r * CGFloat(0.62 + 0.9 * min(max(brightness, 0), 1))
+        let shift = r * CGFloat(0.42 + 0.66 * min(max(brightness, 0), 1))
         let moon = NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r))
         let shadow = NSBezierPath(
-            ovalIn: NSRect(x: center.x - r - shift, y: center.y - r + shift * 0.35, width: 2 * r, height: 2 * r))
+            ovalIn: NSRect(x: center.x - r - shift, y: center.y - r + shift * 0.42, width: 2 * r, height: 2 * r))
         NSGraphicsContext.saveGraphicsState()
         // Clip to everything except the shadow disc, then fill the moon.
         let clip = NSBezierPath(rect: rect.insetBy(dx: -r, dy: -r))
@@ -40,10 +41,5 @@ enum MoonGlyph {
         NSColor.black.setFill()
         moon.fill()
         NSGraphicsContext.restoreGraphicsState()
-        // A faint outline of the whole disc keeps a thin crescent legible.
-        NSColor.black.withAlphaComponent(0.35).setStroke()
-        let outline = NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r))
-        outline.lineWidth = 1
-        outline.stroke()
     }
 }
