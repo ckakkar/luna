@@ -79,7 +79,9 @@ final class FramebufferTransport: DDCTransport {
 /// Writes coalesce: while a write is waiting, a newer value for the same control replaces it, so dragging a
 /// slider sends only as many messages as the monitor can take.
 public final class DDCChannel: @unchecked Sendable {
-    private static let queue = DispatchQueue(label: "luna.ddc", qos: .userInitiated)
+    /// The one queue all of Luna's monitors share.
+    static let sharedQueue = DispatchQueue(label: "luna.ddc", qos: .userInitiated)
+    private let queue: DispatchQueue
 
     private let transport: DDCTransport
     /// Which service this is (see `FramebufferIdentity.key`), so it's never handed to two displays.
@@ -92,8 +94,10 @@ public final class DDCChannel: @unchecked Sendable {
     private var _timing = DDCTiming.normal
     private var pausedUntil = Date.distantPast
 
-    init(transport: DDCTransport, key: String = UUID().uuidString) {
+    /// `queue` is the shared one in the app; tests give theirs a private queue so they don't wait on each other.
+    init(transport: DDCTransport, key: String = UUID().uuidString, queue: DispatchQueue = DDCChannel.sharedQueue) {
         self.transport = transport
+        self.queue = queue
         self.key = key
     }
 
@@ -114,13 +118,13 @@ public final class DDCChannel: @unchecked Sendable {
             defer { draining = true }
             return !draining
         }
-        if start { Self.queue.async { self.drain() } }
+        if start { queue.async { self.drain() } }
     }
 
     /// Reads a control's current and maximum value, retrying garbled replies.
     public func read(_ vcp: UInt8) async -> DDCPacket.Reply {
         await withCheckedContinuation { continuation in
-            Self.queue.async { continuation.resume(returning: self.readNow(vcp)) }
+            queue.async { continuation.resume(returning: self.readNow(vcp)) }
         }
     }
 
@@ -157,7 +161,7 @@ public final class DDCChannel: @unchecked Sendable {
             if order.isEmpty { draining = false }
             return !order.isEmpty
         }
-        if more { Self.queue.async { self.drain() } }
+        if more { queue.async { self.drain() } }
     }
 
     private func readNow(_ vcp: UInt8) -> DDCPacket.Reply {
