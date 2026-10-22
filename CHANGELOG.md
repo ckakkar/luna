@@ -7,6 +7,23 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Fixed
+From a code review (issues #5–#16):
+- **Turning displays off:** two quick clicks could turn off every display. Luna now always keeps one on. (#5)
+- **Identical monitors:** after a reconnect, two of the same model could end up sharing one DDC channel. A channel is never handed out twice now. (#6)
+- **Several DDC monitors:** dragging one monitor's slider held up DDC for the others; monitors now take turns. (#7)
+- **Built-in and Apple displays:**
+  - Brightness shortcuts did nothing on them, and with the keys set to all displays, the keys skipped them. (#8)
+  - After the first auto-brightness glide, Luna's slider stopped following the brightness keys and Control Center. (#9)
+- **Choosing XDR:** a glide in progress could undo it. (#9)
+- **Software dimming:** volume and contrast did nothing on a monitor dimmed in software. (#10)
+- **Panel height:** the panel could grow past the bottom of the screen; it now stops there and scrolls. (#11)
+- **Advanced › Hardware (DDC):** choosing it on a monitor started in Software didn't connect until a restart. (#12)
+- **Sun mode:** it asked for Location on its own; now only when you click **Use my location**. (#13)
+- **Dim below 0%:** turning it off left the display dimmed. (#14)
+- **Changes made while Luna reads from the monitor:** a volume or brightness change made at that moment could be undone. Test Controls also no longer discards a change made while it runs. (#15)
+- **Reset This Display:** it left XDR on. (#16)
+
+### Fixed
 - With XDR on, the screen dimmed for a moment when switching Spaces, changing pages in Safari or playing Netflix.
   - **Apple XDR displays:** XDR now lifts the display's colour table into its HDR headroom instead of laying a multiplying window over the screen. The display pipeline applies the table after macOS has drawn everything, so the boost holds through Space swipes, Mission Control and full-screen video. The overlay remains only for displays without a colour table.
   - **HDR monitors:** XDR is no longer offered by default. In HDR mode macOS already runs normal content near the monitor's peak (about 1.2× left at full brightness), so XDR made macOS dim everything else, and the screen dipped wherever the boost couldn't reach. Opt in under Settings › Displays › Advanced.
