@@ -55,6 +55,9 @@ public struct FramebufferIdentity: Sendable, Equatable {
     public var productName: String?
     public var serial: Int?
 
+    /// Tells framebuffers apart, even two of the same model: the registry path, which is unique per port.
+    public var key: String { ioLocation ?? edidUUID }
+
     public init(edidUUID: String, ioLocation: String? = nil, productName: String? = nil, serial: Int? = nil) {
         self.edidUUID = edidUUID
         self.ioLocation = ioLocation
@@ -93,15 +96,18 @@ public enum DisplayMatching {
         return score
     }
 
-    /// Returns framebuffer indices keyed by display ID. A pair that agrees on nothing is only used when it's
-    /// the one display and the one framebuffer left.
+    /// Returns framebuffer indices keyed by display ID. Framebuffers whose key is in `taken` (already driving
+    /// a connected display) are left out, so a newly attached monitor can't get its twin's channel. A pair
+    /// that agrees on nothing is only used when it's the one display and the one framebuffer left.
     public static func assign(
-        displays: [(id: UInt32, identity: DisplayIdentity)], framebuffers: [FramebufferIdentity]
+        displays: [(id: UInt32, identity: DisplayIdentity)], framebuffers: [FramebufferIdentity],
+        excluding taken: Set<String> = []
     ) -> [UInt32: Int] {
+        let available = framebuffers.indices.filter { !taken.contains(framebuffers[$0].key) }
         var pairs: [(display: UInt32, framebuffer: Int, score: Int)] = []
         for display in displays {
-            for (index, framebuffer) in framebuffers.enumerated() {
-                pairs.append((display.id, index, score(display.identity, framebuffer)))
+            for index in available {
+                pairs.append((display.id, index, score(display.identity, framebuffers[index])))
             }
         }
         pairs.sort { $0.score != $1.score ? $0.score > $1.score : $0.display < $1.display }
@@ -109,7 +115,7 @@ public enum DisplayMatching {
         var result: [UInt32: Int] = [:]
         var used = Set<Int>()
         for pair in pairs where result[pair.display] == nil && !used.contains(pair.framebuffer) {
-            if pair.score == 0 && !(displays.count == 1 && framebuffers.count == 1) { continue }
+            if pair.score == 0 && !(displays.count == 1 && available.count == 1) { continue }
             result[pair.display] = pair.framebuffer
             used.insert(pair.framebuffer)
         }

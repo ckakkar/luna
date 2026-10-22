@@ -24,15 +24,49 @@ public final class DisplayController {
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var brightnessObservers: [CGDirectDisplayID: BrightnessObserver] = [:]
+    /// Turns a display off or on; replaced in tests.
+    @ObservationIgnored var setDisplayEnabled: (Bool, CGDirectDisplayID) -> Bool = { enabled, id in
+        DisplayPower.setEnabled(enabled, display: id)
+    }
+    /// Finds DDC channels for displays, leaving out services already in use; replaced in tests.
+    @ObservationIgnored var discoverChannels:
+        ([(id: CGDirectDisplayID, identity: DisplayIdentity)], Set<String>) -> [CGDirectDisplayID: DDCChannel] = {
+            DDCDiscovery.channels(for: $0, excluding: $1)
+        }
+    /// Whether this Mac can turn displays off; on in tests that exercise it.
+    @ObservationIgnored var canSwitchDisplays: Bool
 
     public init(settings: AppSettings, store: DisplayStore = DisplayStore(), preview: [PreviewDisplay]? = nil) {
         self.settings = settings
         self.store = store
         isPreview = preview != nil
+        canSwitchDisplays = preview == nil && DisplayPower.isAvailable
         auto = AutoBrightness(controller: self)
         if let preview {
             displays = preview.enumerated().map { $1.makeDisplay(index: $0, app: settings, store: store) }
         }
+    }
+
+    /// Replaces the display list (tests only).
+    func setDisplaysForTesting(_ list: [Display]) {
+        displays = list
+        for display in list { adopt(display) }
+    }
+
+    /// Connects a new display to auto brightness and to DDC discovery.
+    private func adopt(_ display: Display) {
+        display.onUserBrightness = { [weak self] display in self?.auto.userAdjusted(display) }
+        display.requestDDC = { [weak self] display in self?.connectDDC(to: display) }
+    }
+
+    /// Looks for a DDC channel for one display, e.g. when Settings switches it from Software to Hardware.
+    func connectDDC(to display: Display) {
+        guard display.ddc == nil, display.kind == .external || display.kind == .apple else { return }
+        let taken = Set(displays.compactMap { $0.ddc?.key })
+        guard let channel = discoverChannels([(display.id, display.identity)], taken)[display.id] else { return }
+        display.ddc = channel
+        if display.kind == .external { display.control = .ddc }
+        Task { await display.probe() }
     }
 
     // MARK: Lifecycle
@@ -69,7 +103,7 @@ public final class DisplayController {
         for display in displays { display.detach() }
         Dimmer.shared.resetAll()
         corners.hide()
-        for item in disabled { DisplayPower.setEnabled(true, display: item.id) }
+        for item in disabled { _ = setDisplayEnabled(true, item.id) }
         settings.disabledDisplays = []
         auto.stop()
         for observer in brightnessObservers.values { observer.stop() }
@@ -124,7 +158,9 @@ public final class DisplayController {
             ($0.kind == .external || $0.kind == .apple) && $0.ddc == nil && $0.settings.method != .software
         }
         if !needDDC.isEmpty {
-            let channels = DDCDiscovery.channels(for: needDDC.map { ($0.id, $0.identity) })
+            // Channels already driving a connected display stay theirs.
+            let taken = Set(next.compactMap { $0.ddc?.key })
+            let channels = discoverChannels(needDDC.map { ($0.id, $0.identity) }, taken)
             for display in needDDC {
                 if let channel = channels[display.id] {
                     display.ddc = channel
@@ -144,7 +180,7 @@ public final class DisplayController {
         disabled.removeAll { item in active.contains(item.id) }
         for display in displays { display.screenChanged() }
         for display in added {
-            display.onUserBrightness = { [weak self] display in self?.auto.userAdjusted(display) }
+            adopt(display)
             // Start from where the display is now: macOS's value for Apple displays, the monitor's own
             // (read by `probe`) over DDC. Only the software parts (dimming, XDR) are restored at once.
             if display.control == .apple, let value = AppleNative.brightness(display.id) {
@@ -265,26 +301,38 @@ public final class DisplayController {
         for display in displays { display.setPosition(position) }
     }
 
+    /// After "Dim below 0%" is turned off nothing may stay dimmed: displays below 0% go to 0%.
+    public func dimmingSettingChanged() {
+        guard !settings.allowDimming else { return }
+        for display in displays where display.level.dim > 0 {
+            display.setLevel(Level(brightness: 0), byUser: false)
+        }
+    }
+
     // MARK: Turning displays off
 
-    /// Only with another display left to show things on.
+    /// Only with another display left to show things on. Counts displays still on, so a second click before
+    /// the display list catches up can't turn off the last one.
     public func canTurnOff(_ display: Display) -> Bool {
-        !isPreview && displays.count > 1 && DisplayPower.isAvailable
+        let stillOn = displays.filter { candidate in !disabled.contains { $0.id == candidate.id } }
+        return canSwitchDisplays && stillOn.count > 1 && stillOn.contains { $0 === display }
     }
 
     public func turnOff(_ display: Display) {
         guard canTurnOff(display) else { return }
         let item = DisabledDisplay(id: display.id, name: display.name)
         display.detach()
-        if DisplayPower.setEnabled(false, display: display.id) {
+        if setDisplayEnabled(false, display.id) {
             disabled.append(item)
             settings.disabledDisplays.append(item.id)
+            // Gone from the panel at once; the refresh confirms it.
+            displays.removeAll { $0 === display }
             scheduleRefresh()
         }
     }
 
     public func turnOn(_ item: DisabledDisplay) {
-        DisplayPower.setEnabled(true, display: item.id)
+        _ = setDisplayEnabled(true, item.id)
         disabled.removeAll { $0.id == item.id }
         settings.disabledDisplays.removeAll { $0 == item.id }
         scheduleRefresh()

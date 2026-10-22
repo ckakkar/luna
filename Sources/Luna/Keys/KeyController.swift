@@ -103,8 +103,8 @@ final class KeyController {
         guard isDown else { return swallowing.remove(key.rawValue) != nil }
         let handled: Bool
         switch key {
-        case .brightnessUp: handled = brightness(up: true, fine: fine)
-        case .brightnessDown: handled = brightness(up: false, fine: fine)
+        case .brightnessUp: handled = brightness(up: true, fine: fine, fromMediaKey: true)
+        case .brightnessDown: handled = brightness(up: false, fine: fine, fromMediaKey: true)
         case .volumeUp, .volumeDown, .mute: handled = volume(key, fine: fine)
         }
         if handled { swallowing.insert(key.rawValue) }
@@ -121,29 +121,13 @@ final class KeyController {
         }
     }
 
+    /// A brightness key (`fromMediaKey`) or shortcut. Returns false when the key is left to macOS.
     @discardableResult
-    func brightness(up: Bool, fine: Bool) -> Bool {
-        var handled = false
-        for display in brightnessTargets {
-            let allowBoost = settings.keysEnterXDR && display.isXDRCapable
-            if leavesToSystem(display, up: up, allowBoost: allowBoost) { continue }
-            let next = SliderZones.step(
-                display.level, by: (up ? 1 : -1) * (fine ? 0.25 : 1), allowDimming: settings.allowDimming,
-                allowBoost: allowBoost)
-            if next.boost > 0, !display.xdr { display.setXDR(true) }
-            display.setLevel(next)
-            showBrightnessHUD(display)
-            handled = true
-        }
-        return handled
-    }
-
-    /// macOS handles its own displays in the normal range, with its own indicator; Luna steps in past the ends.
-    private func leavesToSystem(_ display: Display, up: Bool, allowBoost: Bool) -> Bool {
-        guard display.control == .apple, display.level.dim == 0, display.level.boost == 0 else { return false }
-        if up, display.level.brightness >= 0.999, allowBoost { return false }
-        if !up, display.level.brightness <= 0.001, settings.allowDimming { return false }
-        return true
+    func brightness(up: Bool, fine: Bool, fromMediaKey: Bool = false) -> Bool {
+        let changed = BrightnessKeys.press(
+            up: up, fine: fine, fromMediaKey: fromMediaKey, targets: brightnessTargets, settings: settings)
+        for display in changed { showBrightnessHUD(display) }
+        return !changed.isEmpty
     }
 
     func showBrightnessHUD(_ display: Display) {

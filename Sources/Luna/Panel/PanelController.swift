@@ -64,6 +64,9 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func show(centeredOn screen: NSScreen? = nil) {
         guard !isShown else { return }
+        // No taller than the screen: 6 pt under the menu bar, 8 pt above the bottom (beyond that it scrolls).
+        let visible = (screen ?? statusItem.button?.window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
+        model.panelMaxHeight = model.panelMaxHeightOverride ?? visible - 14
         let fitting = hosting.sizeThatFits(
             in: CGSize(width: Metrics.panelWidth + 2 * Metrics.panelMargin, height: 4000))
         if fitting.width > 0, fitting.height > 0 { contentSize = fitting }

@@ -130,6 +130,7 @@ struct GeneralPane: View {
                     Text("Dim below 0%")
                     Text("The slider and keys go darker than the display's lowest setting, for late nights.")
                 }
+                .onChange(of: settings.allowDimming) { model.controller.dimmingSettingChanged() }
                 Toggle(isOn: $settings.keysEnterXDR) {
                     Text("Brightness up at 100% turns on XDR")
                     Text("On displays with HDR headroom, like a MacBook Pro or Pro Display XDR.")

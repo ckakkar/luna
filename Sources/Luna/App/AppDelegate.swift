@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = AppModel(controller: controller, updater: Updater())
         model.previewExpanded = options.expanded
         if options.preview, options.showUpdate { model.availableUpdate = "0.2.0" }
+        if options.preview { model.panelMaxHeightOverride = options.maxHeight }
         panel = PanelController(model: model)
         settingsWindow = SettingsWindowController(model: model)
         keys = KeyController(model: model)
@@ -204,6 +205,7 @@ struct LaunchOptions {
     var openPanel = false
     var backdrop = false
     var showUpdate = false
+    var maxHeight: CGFloat?
     var selfTest = false
     var quiet = false
 
@@ -224,6 +226,11 @@ struct LaunchOptions {
         openPanel = arguments.contains("--open")
         backdrop = arguments.contains("--backdrop")
         showUpdate = arguments.contains("--update")
+        if let index = arguments.firstIndex(of: "--max-height"), index + 1 < arguments.count,
+            let value = Double(arguments[index + 1])
+        {
+            maxHeight = CGFloat(value)
+        }
         selfTest = arguments.contains("--self-test")
         quiet = arguments.contains("--quiet")
         if let index = arguments.firstIndex(of: "--settings"), index + 1 < arguments.count {

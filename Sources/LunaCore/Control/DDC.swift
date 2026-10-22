@@ -82,6 +82,8 @@ public final class DDCChannel: @unchecked Sendable {
     private static let queue = DispatchQueue(label: "luna.ddc", qos: .userInitiated)
 
     private let transport: DDCTransport
+    /// Which service this is (see `FramebufferIdentity.key`), so it's never handed to two displays.
+    public let key: String
     private let lock = NSLock()
     // Guarded by `lock`.
     private var pending: [UInt8: (value: UInt16, source: UInt8)] = [:]
@@ -90,8 +92,9 @@ public final class DDCChannel: @unchecked Sendable {
     private var _timing = DDCTiming.normal
     private var pausedUntil = Date.distantPast
 
-    init(transport: DDCTransport) {
+    init(transport: DDCTransport, key: String = UUID().uuidString) {
         self.transport = transport
+        self.key = key
     }
 
     public var timing: DDCTiming {
@@ -127,28 +130,34 @@ public final class DDCChannel: @unchecked Sendable {
         if wait > 0 { usleep(useconds_t(min(wait, 10) * 1_000_000)) }
     }
 
+    /// Sends one waiting write, then queues itself again behind whatever else is waiting (other monitors'
+    /// writes, reads). A monitor whose slider is being dragged keeps refilling its writes; taking turns means
+    /// it can't hold up the others until the drag stops.
     private func drain() {
-        while true {
-            waitIfPaused()
-            let next: (vcp: UInt8, value: UInt16, source: UInt8, timing: DDCTiming)? = lock.withLock {
-                while !order.isEmpty {
-                    let vcp = order.removeFirst()
-                    if let entry = pending.removeValue(forKey: vcp) { return (vcp, entry.value, entry.source, _timing) }
-                }
-                draining = false
-                return nil
+        waitIfPaused()
+        let next: (vcp: UInt8, value: UInt16, source: UInt8, timing: DDCTiming)? = lock.withLock {
+            while !order.isEmpty {
+                let vcp = order.removeFirst()
+                if let entry = pending.removeValue(forKey: vcp) { return (vcp, entry.value, entry.source, _timing) }
             }
-            guard let next else { return }
-            let packet = DDCPacket.write(next.vcp, value: next.value, source: next.source)
-            // Monitors drop the odd message; sending each twice is what makes DDC feel reliable.
-            var sent = false
-            for _ in 0..<next.timing.attempts where !sent {
-                usleep(next.timing.writeGap)
-                sent = transport.write(packet, source: next.source)
-                usleep(next.timing.writeGap)
-                sent = transport.write(packet, source: next.source) || sent
-            }
+            draining = false
+            return nil
         }
+        guard let next else { return }
+        let packet = DDCPacket.write(next.vcp, value: next.value, source: next.source)
+        // Monitors drop the odd message; sending each twice is what makes DDC feel reliable.
+        var sent = false
+        for _ in 0..<next.timing.attempts where !sent {
+            usleep(next.timing.writeGap)
+            sent = transport.write(packet, source: next.source)
+            usleep(next.timing.writeGap)
+            sent = transport.write(packet, source: next.source) || sent
+        }
+        let more = lock.withLock {
+            if order.isEmpty { draining = false }
+            return !order.isEmpty
+        }
+        if more { Self.queue.async { self.drain() } }
     }
 
     private func readNow(_ vcp: UInt8) -> DDCPacket.Reply {
@@ -177,22 +186,29 @@ public final class DDCChannel: @unchecked Sendable {
 
 /// Finds the DDC channels of external displays.
 public enum DDCDiscovery {
-    /// Builds a channel for each external display that has one, keyed by display ID.
-    public static func channels(for displays: [(id: CGDirectDisplayID, identity: DisplayIdentity)])
-        -> [CGDirectDisplayID: DDCChannel]
-    {
+    /// Builds a channel for each display that has one, keyed by display ID. Services whose key is in `taken`
+    /// already drive another connected display and aren't handed out again.
+    public static func channels(
+        for displays: [(id: CGDirectDisplayID, identity: DisplayIdentity)], excluding taken: Set<String> = []
+    ) -> [CGDirectDisplayID: DDCChannel] {
         guard !displays.isEmpty else { return [:] }
         if LunaAVServiceIsAvailable() {
             let services = avServices()
             if !services.isEmpty {
                 let assignment = DisplayMatching.assign(
-                    displays: displays.map { ($0.id, $0.identity) }, framebuffers: services.map(\.identity))
-                return assignment.mapValues { DDCChannel(transport: AVServiceTransport(service: services[$0].service)) }
+                    displays: displays.map { ($0.id, $0.identity) }, framebuffers: services.map(\.identity),
+                    excluding: taken)
+                return assignment.mapValues {
+                    DDCChannel(
+                        transport: AVServiceTransport(service: services[$0].service), key: services[$0].identity.key)
+                }
             }
         }
         var channels: [CGDirectDisplayID: DDCChannel] = [:]
         for display in displays where FramebufferTransport.exists(for: display.id) {
-            channels[display.id] = DDCChannel(transport: FramebufferTransport(displayID: display.id))
+            let key = "framebuffer-\(display.id)"
+            guard !taken.contains(key) else { continue }
+            channels[display.id] = DDCChannel(transport: FramebufferTransport(displayID: display.id), key: key)
         }
         return channels
     }

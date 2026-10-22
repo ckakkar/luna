@@ -13,6 +13,10 @@ final class AppModel {
     var availableUpdate: String?
     /// Counts openings of the panel, so its content can animate in each time.
     var panelOpenCount = 0
+    /// The tallest the panel's glass may be on the screen it opens on.
+    var panelMaxHeight: CGFloat = 10_000
+    /// `--preview --max-height`: pretend the screen is this short.
+    @ObservationIgnored var panelMaxHeightOverride: CGFloat?
     /// `--preview --expanded`: cards start with their extra options showing.
     @ObservationIgnored var previewExpanded = false
 
