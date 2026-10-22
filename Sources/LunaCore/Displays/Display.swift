@@ -82,6 +82,8 @@ public final class Display: Identifiable {
     @ObservationIgnored private var ownWriteUntil = Date.distantPast
     /// Called after the user changes brightness, so auto brightness can learn from it.
     @ObservationIgnored var onUserBrightness: ((Display) -> Void)?
+    /// Asks the controller to look for a DDC channel (when Settings switches to Hardware without one).
+    @ObservationIgnored var requestDDC: ((Display) -> Void)?
 
     init(
         id: CGDirectDisplayID, uuid: String, name: String, kind: DisplayKind, identity: DisplayIdentity,
@@ -277,6 +279,9 @@ public final class Display: Identifiable {
             } else if ddc != nil {
                 control = .ddc
                 Task { await probe() }
+            } else {
+                // Launched with Software chosen, so no channel was looked for: look now.
+                requestDDC?(self)
             }
         }
     }

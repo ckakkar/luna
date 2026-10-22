@@ -28,6 +28,11 @@ public final class DisplayController {
     @ObservationIgnored var setDisplayEnabled: (Bool, CGDirectDisplayID) -> Bool = { enabled, id in
         DisplayPower.setEnabled(enabled, display: id)
     }
+    /// Finds DDC channels for displays, leaving out services already in use; replaced in tests.
+    @ObservationIgnored var discoverChannels:
+        ([(id: CGDirectDisplayID, identity: DisplayIdentity)], Set<String>) -> [CGDirectDisplayID: DDCChannel] = {
+            DDCDiscovery.channels(for: $0, excluding: $1)
+        }
     /// Whether this Mac can turn displays off; on in tests that exercise it.
     @ObservationIgnored var canSwitchDisplays: Bool
 
@@ -45,6 +50,23 @@ public final class DisplayController {
     /// Replaces the display list (tests only).
     func setDisplaysForTesting(_ list: [Display]) {
         displays = list
+        for display in list { adopt(display) }
+    }
+
+    /// Connects a new display to auto brightness and to DDC discovery.
+    private func adopt(_ display: Display) {
+        display.onUserBrightness = { [weak self] display in self?.auto.userAdjusted(display) }
+        display.requestDDC = { [weak self] display in self?.connectDDC(to: display) }
+    }
+
+    /// Looks for a DDC channel for one display, e.g. when Settings switches it from Software to Hardware.
+    func connectDDC(to display: Display) {
+        guard display.ddc == nil, display.kind == .external || display.kind == .apple else { return }
+        let taken = Set(displays.compactMap { $0.ddc?.key })
+        guard let channel = discoverChannels([(display.id, display.identity)], taken)[display.id] else { return }
+        display.ddc = channel
+        if display.kind == .external { display.control = .ddc }
+        Task { await display.probe() }
     }
 
     // MARK: Lifecycle
@@ -138,7 +160,7 @@ public final class DisplayController {
         if !needDDC.isEmpty {
             // Channels already driving a connected display stay theirs.
             let taken = Set(next.compactMap { $0.ddc?.key })
-            let channels = DDCDiscovery.channels(for: needDDC.map { ($0.id, $0.identity) }, excluding: taken)
+            let channels = discoverChannels(needDDC.map { ($0.id, $0.identity) }, taken)
             for display in needDDC {
                 if let channel = channels[display.id] {
                     display.ddc = channel
@@ -158,7 +180,7 @@ public final class DisplayController {
         disabled.removeAll { item in active.contains(item.id) }
         for display in displays { display.screenChanged() }
         for display in added {
-            display.onUserBrightness = { [weak self] display in self?.auto.userAdjusted(display) }
+            adopt(display)
             // Start from where the display is now: macOS's value for Apple displays, the monitor's own
             // (read by `probe`) over DDC. Only the software parts (dimming, XDR) are restored at once.
             if display.control == .apple, let value = AppleNative.brightness(display.id) {

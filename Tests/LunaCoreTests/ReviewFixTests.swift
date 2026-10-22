@@ -142,3 +142,25 @@ import Testing
         #expect(!codes.contains(VCP.brightness))
     }
 }
+
+@Suite @MainActor struct ControlMethodTests {
+    // #12
+    @Test func choosingHardwareLooksForDDC() async {
+        let (controller, displays) = Fixtures.controller([(.external, .software)])
+        let display = displays[0]
+        display.settings.method = .software
+        let transport = FakeTransport(values: [VCP.brightness: (40, 100)])
+        var asked: [CGDirectDisplayID] = []
+        controller.discoverChannels = { wanted, _ in
+            asked += wanted.map(\.id)
+            let channel = DDCChannel(transport: transport)
+            channel.timing = .instant
+            return [display.id: channel]
+        }
+        display.setMethod(.hardware)
+        #expect(asked == [display.id])
+        #expect(display.ddc != nil && display.control == .ddc)
+        // The probe that follows reads the monitor's own brightness.
+        #expect(await Fixtures.eventually { abs(display.level.brightness - 0.4) < 1e-9 })
+    }
+}
