@@ -331,6 +331,10 @@ public final class Display: Identifiable {
     }
 
     public func resetSettings() {
+        transition?.cancel()
+        transition = nil
+        // XDR off properly first: the saved setting alone would leave the display boosted.
+        if xdr { setXDR(false) }
         let keepLevel = level
         settings = DisplaySettings()
         settings.level = keepLevel

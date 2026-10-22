@@ -220,3 +220,17 @@ import Testing
         #expect(abs(display.level.brightness - 0.6) < 1e-9)
     }
 }
+
+@Suite @MainActor struct ResetTests {
+    // #16
+    @Test func resetTurnsXDROff() {
+        let (_, displays) = Fixtures.controller([(.builtin, .preview)])
+        let display = displays[0]
+        display.edrHeadroom = 3
+        display.setXDR(true)
+        #expect(display.level.boost > 0)
+        display.resetSettings()
+        #expect(!display.xdr && !display.settings.xdr)
+        #expect(display.level.boost == 0)
+    }
+}
