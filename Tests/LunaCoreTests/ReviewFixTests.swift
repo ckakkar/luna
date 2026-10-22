@@ -54,3 +54,41 @@ import Testing
         #expect(transport.writes.map(\.value) == [49, 49])
     }
 }
+
+@Suite @MainActor struct BrightnessKeyTests {
+    // #8
+    @Test func shortcutsChangeAppleDisplaysToo() {
+        let (controller, displays) = Fixtures.controller([(.builtin, .apple)])
+        let display = displays[0]
+        display.setLevel(Level(brightness: 0.5), byUser: false)
+        let changed = BrightnessKeys.press(
+            up: true, fine: false, fromMediaKey: false, targets: [display], settings: controller.settings)
+        #expect(changed.count == 1)
+        #expect(abs(display.level.brightness - (0.5 + 1.0 / 16)) < 1e-9)
+    }
+
+    @Test func mediaKeysForOnlyAppleDisplaysAreLeftToMacOS() {
+        let (controller, displays) = Fixtures.controller([(.builtin, .apple)])
+        displays[0].setLevel(Level(brightness: 0.5), byUser: false)
+        let changed = BrightnessKeys.press(
+            up: true, fine: false, fromMediaKey: true, targets: displays, settings: controller.settings)
+        #expect(changed.isEmpty)
+        #expect(displays[0].level.brightness == 0.5)
+    }
+
+    @Test func mediaKeysForAllDisplaysChangeTheAppleOneToo() {
+        let (controller, displays) = Fixtures.controller([(.builtin, .apple), (.external, .preview)])
+        for display in displays { display.setLevel(Level(brightness: 0.5), byUser: false) }
+        let changed = BrightnessKeys.press(
+            up: false, fine: false, fromMediaKey: true, targets: displays, settings: controller.settings)
+        #expect(changed.count == 2)
+        #expect(displays.allSatisfy { abs($0.level.brightness - (0.5 - 1.0 / 16)) < 1e-9 })
+    }
+
+    @Test func goingBelowZeroIsLunasJob() {
+        let (controller, displays) = Fixtures.controller([(.builtin, .apple)])
+        displays[0].setLevel(Level(brightness: 0), byUser: false)
+        #expect(!BrightnessKeys.macOSHandles(displays[0], up: false, settings: controller.settings))
+        #expect(BrightnessKeys.macOSHandles(displays[0], up: true, settings: controller.settings))
+    }
+}
