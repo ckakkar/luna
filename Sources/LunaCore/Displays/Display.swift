@@ -190,8 +190,13 @@ public final class Display: Identifiable {
                 let eased = t * t * (3 - 2 * t)
                 self.update(Level(signed: start.signed + (target.signed - start.signed) * eased))
             }
+            // Done: changes from outside Luna (keys, Control Center) may reach the slider again.
+            if !Task.isCancelled { self?.transition = nil }
         }
     }
+
+    /// A glide is under way.
+    var isAnimating: Bool { transition != nil }
 
     private func update(_ newLevel: Level) {
         var newLevel = newLevel
@@ -205,6 +210,9 @@ public final class Display: Identifiable {
     public func setXDR(_ on: Bool) {
         guard isXDRCapable || !on else { return }
         if on == xdr { return }
+        // A glide still running (auto brightness) would otherwise carry on to its old target.
+        transition?.cancel()
+        transition = nil
         if !on, level.boost > 0 { settings.lastBoost = level.boost }
         xdr = on
         settings.xdr = on

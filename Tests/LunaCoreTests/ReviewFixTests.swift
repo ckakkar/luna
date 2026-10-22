@@ -92,3 +92,30 @@ import Testing
         #expect(BrightnessKeys.macOSHandles(displays[0], up: true, settings: controller.settings))
     }
 }
+
+@Suite @MainActor struct AnimationTests {
+    // #9
+    @Test func outsideChangesReachTheSliderAfterAGlide() async {
+        let (_, displays) = Fixtures.controller([(.builtin, .preview)])
+        let display = displays[0]
+        display.setLevel(Level(brightness: 0.2), byUser: false)
+        display.animate(to: Level(brightness: 0.7), duration: 0.1)
+        #expect(await Fixtures.eventually { !display.isAnimating })
+        #expect(abs(display.level.brightness - 0.7) < 1e-9)
+        display.systemBrightnessChanged(0.4)
+        #expect(abs(display.level.brightness - 0.4) < 1e-9)
+    }
+
+    @Test func choosingXDRStopsAGlide() async {
+        let (_, displays) = Fixtures.controller([(.builtin, .preview)])
+        let display = displays[0]
+        display.edrHeadroom = 3
+        display.setLevel(Level(brightness: 0.8), byUser: false)
+        display.animate(to: Level(brightness: 0.2), duration: 0.5)
+        try? await Task.sleep(for: .milliseconds(80))
+        display.setXDR(true)
+        try? await Task.sleep(for: .milliseconds(600))
+        #expect(display.xdr)
+        #expect(display.level.brightness == 1 && display.level.boost > 0)
+    }
+}
