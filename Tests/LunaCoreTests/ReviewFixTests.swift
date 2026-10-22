@@ -119,3 +119,26 @@ import Testing
         #expect(display.level.brightness == 1 && display.level.boost > 0)
     }
 }
+
+@Suite @MainActor struct SoftwareModeDDCTests {
+    // #10
+    @Test func volumeAndContrastStillReachAMonitorDimmedInSoftware() async {
+        let (_, displays) = Fixtures.controller([(.external, .software)])
+        let display = displays[0]
+        let transport = FakeTransport()
+        let channel = DDCChannel(transport: transport)
+        channel.timing = .instant
+        display.ddc = channel
+        display.hasVolume = true
+        display.hasContrast = true
+
+        display.setVolume(0.8)
+        display.setContrast(0.6)
+        display.setLevel(Level(brightness: 0.3), byUser: false)
+        #expect(await Fixtures.eventually { transport.writes.count >= 4 })
+        let codes = Set(transport.writes.map(\.vcp))
+        #expect(codes.contains(VCP.volume) && codes.contains(VCP.contrast))
+        // Brightness is software's job here.
+        #expect(!codes.contains(VCP.brightness))
+    }
+}

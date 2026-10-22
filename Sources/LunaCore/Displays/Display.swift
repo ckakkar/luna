@@ -445,8 +445,10 @@ public final class Display: Identifiable {
         gammaBoost = 1
     }
 
+    /// Brightness goes over DDC only when DDC drives the backlight. Volume, contrast and input go whenever the
+    /// monitor has a channel, whatever controls its brightness (macOS, or software dimming).
     private func writeDDC(_ vcp: UInt8, _ fraction: Double) {
-        guard let ddc, control == .ddc || (control == .apple && vcp != VCP.brightness) else { return }
+        guard let ddc, vcp != VCP.brightness || control == .ddc else { return }
         let maximum = Double(ddcMaximum[vcp] ?? 100)
         ddc.write(vcp, value: UInt16((fraction.clamped(to: 0...1) * maximum).rounded()))
     }
