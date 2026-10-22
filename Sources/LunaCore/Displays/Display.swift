@@ -77,7 +77,9 @@ public final class Display: Identifiable {
     /// XDR is lifting the display's brightness right now.
     public var isBoosting: Bool { edr != nil || gammaBoost > 1.001 }
     @ObservationIgnored private var transition: Task<Void, Never>?
-    @ObservationIgnored private var touchedDuringProbe = false
+    /// Counts changes to each control (by VCP code), so a monitor's reply to an older read can't undo a newer
+    /// change: a value read during a probe is only applied if the control wasn't changed since it started.
+    @ObservationIgnored private var edits: [UInt8: Int] = [:]
     /// Brightness notifications caused by Luna's own writes are ignored until then.
     @ObservationIgnored private var ownWriteUntil = Date.distantPast
     /// Called after the user changes brightness, so auto brightness can learn from it.
@@ -172,10 +174,7 @@ public final class Display: Identifiable {
         transition?.cancel()
         transition = nil
         update(newLevel)
-        if byUser {
-            if probing { touchedDuringProbe = true }
-            onUserBrightness?(self)
-        }
+        if byUser { onUserBrightness?(self) }
     }
 
     /// Glides to a level, for auto brightness and presets.
@@ -206,6 +205,7 @@ public final class Display: Identifiable {
         if !app.allowDimming { newLevel.dim = 0 }
         level = newLevel
         settings.level = newLevel
+        edits[VCP.brightness, default: 0] += 1
         applyBrightness()
     }
 
@@ -226,12 +226,14 @@ public final class Display: Identifiable {
     }
 
     public func setContrast(_ value: Double) {
+        edits[VCP.contrast, default: 0] += 1
         contrast = value.clamped(to: 0...1)
         settings.baseContrast = linksContrast ? contrast / linkedContrastFactor : contrast
         writeDDC(VCP.contrast, contrast)
     }
 
     public func setVolume(_ value: Double) {
+        edits[VCP.volume, default: 0] += 1
         volume = value.clamped(to: 0...1)
         settings.volume = volume
         if muted, volume > 0 { setMuted(false) }
@@ -239,6 +241,7 @@ public final class Display: Identifiable {
     }
 
     public func setMuted(_ mute: Bool) {
+        edits[VCP.mute, default: 0] += 1
         muted = mute
         if hasMute {
             ddc?.write(VCP.mute, value: mute ? 1 : 2)
@@ -248,6 +251,7 @@ public final class Display: Identifiable {
     }
 
     public func selectInput(_ source: InputSource) {
+        edits[VCP.inputSource, default: 0] += 1
         if settings.inputMethod == .lg {
             ddc?.write(VCP.lgInputSource, value: source.code, source: 0x50)
         } else {
@@ -290,9 +294,11 @@ public final class Display: Identifiable {
     /// Returns a sentence for Settings.
     public func runTest() async -> String {
         let original = level
-        setLevel(Level(brightness: max(0, original.brightness - 0.35)), byUser: false)
+        let dipped = Level(brightness: max(0, original.brightness - 0.35))
+        setLevel(dipped, byUser: false)
         try? await Task.sleep(for: .milliseconds(700))
-        setLevel(original, byUser: false)
+        // Unless the brightness was changed meanwhile, which then stands.
+        if level == dipped { setLevel(original, byUser: false) }
         switch control {
         case .apple:
             guard ddc != nil else { return "Brightness is controlled by macOS, like the brightness keys." }
@@ -488,8 +494,9 @@ public final class Display: Identifiable {
         // Over DDC, brightness too; for displays macOS controls, only the extras.
         let ddcBrightness = control == .ddc
         probing = true
-        touchedDuringProbe = false
         defer { probing = false }
+        let editsBefore = edits
+        func untouched(_ vcp: UInt8) -> Bool { edits[vcp] == editsBefore[vcp] }
 
         var responsive = false
         func read(_ vcp: UInt8) async -> (current: Double, maximum: UInt16)? {
@@ -502,7 +509,7 @@ public final class Display: Identifiable {
 
         let brightness = ddcBrightness ? await read(VCP.brightness) : nil
         hardwareConfirmed = brightness != nil || control == .apple
-        if let brightness, !touchedDuringProbe, level.dim == 0, level.boost == 0 {
+        if let brightness, untouched(VCP.brightness), level.dim == 0, level.boost == 0 {
             let range = settings.maxBrightness - settings.minBrightness
             let normal = range > 0 ? (brightness.current - settings.minBrightness) / range : brightness.current
             level = Level(brightness: normal)
@@ -510,22 +517,22 @@ public final class Display: Identifiable {
         }
         if let contrast = await read(VCP.contrast) {
             hasContrast = true
-            self.contrast = contrast.current
+            if untouched(VCP.contrast) { self.contrast = contrast.current }
             if settings.baseContrast == nil {
                 settings.baseContrast = linksContrast ? contrast.current / linkedContrastFactor : contrast.current
             }
         }
         if let volume = await read(VCP.volume) {
             hasVolume = true
-            if settings.volume == nil || !touchedDuringProbe { self.volume = volume.current }
+            if untouched(VCP.volume) { self.volume = volume.current }
         }
         let muteReply = await ddc.read(VCP.mute)
         if case let .value(current, _) = muteReply {
             hasMute = true
-            muted = current == 1
+            if untouched(VCP.mute) { muted = current == 1 }
         }
         let inputReply = await ddc.read(VCP.inputSource)
-        if case let .value(current, _) = inputReply {
+        if case let .value(current, _) = inputReply, untouched(VCP.inputSource) {
             input = current & 0xFF
         }
         if muteReply != .invalid || inputReply != .invalid { responsive = true }

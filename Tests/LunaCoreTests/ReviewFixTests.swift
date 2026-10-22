@@ -177,3 +177,46 @@ import Testing
         #expect(displays[1].level == Level(brightness: 0.6))
     }
 }
+
+@Suite @MainActor struct LateResultTests {
+    // #15
+    @Test func aProbeDoesntUndoNewerChanges() async {
+        let (_, displays) = Fixtures.controller([(.external, .ddc)])
+        let display = displays[0]
+        let transport = FakeTransport(
+            values: [VCP.brightness: (50, 100), VCP.volume: (30, 100), VCP.contrast: (70, 100)], readDelay: 40_000)
+        let channel = DDCChannel(transport: transport)
+        channel.timing = .instant
+        display.ddc = channel
+        display.hasVolume = true
+
+        let probe = Task { await display.probe() }
+        try? await Task.sleep(for: .milliseconds(20))
+        display.setVolume(0.8)
+        display.setLevel(Level(brightness: 0.9))
+        await probe.value
+        #expect(display.volume == 0.8)
+        #expect(abs(display.level.brightness - 0.9) < 1e-9)
+        // Controls not touched take the monitor's values.
+        #expect(abs(display.contrast - 0.7) < 1e-9)
+    }
+
+    @Test func testControlsKeepsAChangeMadeDuringTheTest() async {
+        let (_, displays) = Fixtures.controller([(.builtin, .preview)])
+        let display = displays[0]
+        display.setLevel(Level(brightness: 0.6), byUser: false)
+        let test = Task { await display.runTest() }
+        try? await Task.sleep(for: .milliseconds(200))
+        display.setLevel(Level(brightness: 0.95))
+        _ = await test.value
+        #expect(abs(display.level.brightness - 0.95) < 1e-9)
+    }
+
+    @Test func testControlsRestoresWhenNothingChanged() async {
+        let (_, displays) = Fixtures.controller([(.builtin, .preview)])
+        let display = displays[0]
+        display.setLevel(Level(brightness: 0.6), byUser: false)
+        _ = await display.runTest()
+        #expect(abs(display.level.brightness - 0.6) < 1e-9)
+    }
+}
