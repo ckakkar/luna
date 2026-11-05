@@ -182,7 +182,9 @@ public final class Display: Identifiable {
 
     /// Glides to a level, for auto brightness and presets.
     public func animate(to target: Level, duration: Double = 1.2) {
-        transition?.cancel()
+        // Cleared at once: if there's nowhere to go (already at the target), a cancelled task left here would
+        // keep blocking outside brightness changes.
+        stopGlide()
         let start = level
         guard abs(start.signed - target.signed) > 0.004 else { return }
         let steps = max(1, Int(duration * 30))

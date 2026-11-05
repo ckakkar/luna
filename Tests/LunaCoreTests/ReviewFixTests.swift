@@ -412,3 +412,18 @@ import Testing
         #expect(!transport.writes.dropFirst(before).contains { $0.vcp == VCP.volume && $0.value == 50 })
     }
 }
+
+@Suite @MainActor struct GlideReplacementTests {
+    @Test func replacingAGlideWithTheCurrentValueClearsIt() async {
+        let (_, displays) = Fixtures.controller([(.builtin, .preview)])
+        let display = displays[0]
+        display.setLevel(Level(brightness: 0.8), byUser: false)
+        display.animate(to: Level(brightness: 0.2), duration: 1)
+        try? await Task.sleep(for: .milliseconds(100))
+        // Asked to glide to where it already is: nothing to do, and nothing left behind.
+        display.animate(to: display.level)
+        #expect(!display.isAnimating)
+        display.systemBrightnessChanged(0.5)
+        #expect(abs(display.level.brightness - 0.5) < 1e-9)
+    }
+}
