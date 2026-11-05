@@ -101,7 +101,10 @@ public final class Display: Identifiable {
         self.store = store
         let settings = store[uuid]
         self.settings = settings
-        level = settings.level ?? Level(brightness: 0.7)
+        var level = settings.level ?? Level(brightness: 0.7)
+        // Saved while "Dim below 0%" was on (this display was away when it was turned off): not any more.
+        if !app.allowDimming, level.dim > 0 { level = Level(brightness: 0) }
+        self.level = level
         contrast = settings.baseContrast ?? 0.7
         volume = settings.volume ?? 0.5
         xdr = settings.xdr

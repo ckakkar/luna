@@ -332,3 +332,21 @@ import Testing
         #expect(display.level.brightness == stoppedAt && stoppedAt > 0.5)
     }
 }
+
+@Suite @MainActor struct ReconnectTests {
+    @Test func aReconnectingDisplayRespectsDimmingBeingOff() {
+        let defaults = Fixtures.defaults()
+        let settings = AppSettings(defaults: defaults)
+        let store = DisplayStore(defaults: defaults)
+        var saved = store["away"]
+        saved.level = Level(dim: 0.5, brightness: 0)
+        store["away"] = saved
+        settings.allowDimming = false
+
+        let display = Display(
+            id: 900, uuid: "away", name: "Away", kind: .external, identity: DisplayIdentity(), control: .preview,
+            app: settings, store: store)
+        #expect(display.level == Level(brightness: 0))
+        #expect(SoftwareDimming.factor(display.level, hardware: true) == 1)
+    }
+}
