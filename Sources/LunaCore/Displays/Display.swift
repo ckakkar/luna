@@ -199,6 +199,12 @@ public final class Display: Identifiable {
     /// A glide is under way.
     var isAnimating: Bool { transition != nil }
 
+    /// Stops a glide where it is (auto brightness switched off).
+    public func stopGlide() {
+        transition?.cancel()
+        transition = nil
+    }
+
     private func update(_ newLevel: Level) {
         var newLevel = newLevel
         if !(xdr && isXDRCapable) { newLevel.boost = 0 }

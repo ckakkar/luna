@@ -315,3 +315,20 @@ import Testing
         #expect(display.control == .ddc && display.ddcResponsive)
     }
 }
+
+@Suite @MainActor struct AutoOffTests {
+    @Test func switchingAutoOffStopsAGlide() async {
+        let (controller, displays) = Fixtures.controller([(.builtin, .preview)])
+        let display = displays[0]
+        display.setLevel(Level(brightness: 0.8), byUser: false)
+        controller.settings.autoMode = .sun
+        display.animate(to: Level(brightness: 0.2), duration: 1)
+        try? await Task.sleep(for: .milliseconds(150))
+        controller.settings.autoMode = .off
+        controller.auto.update()
+        let stoppedAt = display.level.brightness
+        try? await Task.sleep(for: .milliseconds(400))
+        #expect(!display.isAnimating)
+        #expect(display.level.brightness == stoppedAt && stoppedAt > 0.5)
+    }
+}
