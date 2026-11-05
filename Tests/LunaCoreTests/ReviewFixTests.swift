@@ -236,3 +236,18 @@ import Testing
         #expect(display.level.boost == 0)
     }
 }
+
+// MARK: - Second review
+
+@Suite struct ReadAfterWriteTests {
+    @Test func aReadWaitsForThatControlsPendingWrite() async {
+        let transport = FakeTransport(values: [VCP.brightness: (50, 100), VCP.contrast: (70, 100)])
+        let channel = DDCChannel(transport: transport, queue: DispatchQueue(label: "luna.tests.read-after-write"))
+        channel.timing = .instant
+        // Both writes wait behind the pause; the read is queued after the first drain turn.
+        channel.pause(for: 0.1)
+        channel.write(VCP.contrast, value: 30)
+        channel.write(VCP.brightness, value: 90)
+        #expect(await channel.read(VCP.brightness) == .value(current: 90, maximum: 100))
+    }
+}

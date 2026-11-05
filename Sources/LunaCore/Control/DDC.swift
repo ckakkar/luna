@@ -148,15 +148,7 @@ public final class DDCChannel: @unchecked Sendable {
             return nil
         }
         guard let next else { return }
-        let packet = DDCPacket.write(next.vcp, value: next.value, source: next.source)
-        // Monitors drop the odd message; sending each twice is what makes DDC feel reliable.
-        var sent = false
-        for _ in 0..<next.timing.attempts where !sent {
-            usleep(next.timing.writeGap)
-            sent = transport.write(packet, source: next.source)
-            usleep(next.timing.writeGap)
-            sent = transport.write(packet, source: next.source) || sent
-        }
+        send(next.vcp, value: next.value, source: next.source, timing: next.timing)
         let more = lock.withLock {
             if order.isEmpty { draining = false }
             return !order.isEmpty
@@ -164,8 +156,28 @@ public final class DDCChannel: @unchecked Sendable {
         if more { queue.async { self.drain() } }
     }
 
+    private func send(_ vcp: UInt8, value: UInt16, source: UInt8, timing: DDCTiming) {
+        let packet = DDCPacket.write(vcp, value: value, source: source)
+        // Monitors drop the odd message; sending each twice is what makes DDC feel reliable.
+        var sent = false
+        for _ in 0..<timing.attempts where !sent {
+            usleep(timing.writeGap)
+            sent = transport.write(packet, source: source)
+            usleep(timing.writeGap)
+            sent = transport.write(packet, source: source) || sent
+        }
+    }
+
     private func readNow(_ vcp: UInt8) -> DDCPacket.Reply {
         waitIfPaused()
+        // A write for this control still waiting its turn would make the read stale (and a probe would then
+        // write the old value back): send it first.
+        let waiting: (value: UInt16, source: UInt8, timing: DDCTiming)? = lock.withLock {
+            guard let entry = pending.removeValue(forKey: vcp) else { return nil }
+            order.removeAll { $0 == vcp }
+            return (entry.value, entry.source, _timing)
+        }
+        if let waiting { send(vcp, value: waiting.value, source: waiting.source, timing: waiting.timing) }
         let timing = self.timing
         var nulls = 0
         for attempt in 0..<timing.attempts {

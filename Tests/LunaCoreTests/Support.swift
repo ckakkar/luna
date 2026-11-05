@@ -7,8 +7,11 @@ import Foundation
 final class FakeTransport: DDCTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var _writes: [(vcp: UInt8, value: UInt16)] = []
-    /// Replies to reads, by VCP code: (current, maximum). Codes not listed answer with a null message.
+    /// Replies to reads, by VCP code: (current, maximum). Codes not listed answer with a null message; writes
+    /// update them, like a monitor.
     var values: [UInt8: (UInt16, UInt16)]
+    /// Codes the monitor says it doesn't have (result code 1).
+    var unsupported: Set<UInt8> = []
     var readDelay: useconds_t
     let name: String
     let log: WriteLog?
@@ -28,7 +31,10 @@ final class FakeTransport: DDCTransport, @unchecked Sendable {
         // Set VCP: [0x84, 0x03, vcp, high, low, checksum]
         let vcp = packet[2]
         let value = UInt16(packet[3]) << 8 | UInt16(packet[4])
-        lock.withLock { _writes.append((vcp, value)) }
+        lock.withLock {
+            _writes.append((vcp, value))
+            if let (_, maximum) = values[vcp] { values[vcp] = (value, maximum) }
+        }
         log?.record(name)
         return true
     }
@@ -36,9 +42,13 @@ final class FakeTransport: DDCTransport, @unchecked Sendable {
     func read(_ request: [UInt8], timing: DDCTiming) -> [UInt8]? {
         usleep(readDelay)
         let vcp = request[2]
-        guard let (current, maximum) = lock.withLock({ values[vcp] }) else { return [0x6E, 0x80, 0xBE] }
+        let isUnsupported = lock.withLock { unsupported.contains(vcp) }
+        guard let (current, maximum) = lock.withLock({ values[vcp] }) ?? (isUnsupported ? (0, 0) : nil) else {
+            return [0x6E, 0x80, 0xBE]
+        }
         var bytes: [UInt8] = [
-            0x6E, 0x88, 0x02, 0x00, vcp, 0x00, UInt8(maximum >> 8), UInt8(maximum & 0xFF), UInt8(current >> 8),
+            0x6E, 0x88, 0x02, isUnsupported ? 0x01 : 0x00, vcp, 0x00, UInt8(maximum >> 8), UInt8(maximum & 0xFF),
+            UInt8(current >> 8),
             UInt8(current & 0xFF),
         ]
         bytes.append(DDCPacket.checksum(bytes, seed: 0x50))
