@@ -9,7 +9,7 @@ let package = Package(
         .executable(name: "Luna", targets: ["Luna"])
     ],
     dependencies: [
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.0")
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.1")
     ],
     targets: [
         // Private macOS display APIs, resolved at runtime with dlsym so a missing symbol degrades a feature

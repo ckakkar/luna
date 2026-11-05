@@ -236,3 +236,209 @@ import Testing
         #expect(display.level.boost == 0)
     }
 }
+
+// MARK: - Second review
+
+@Suite struct ReadAfterWriteTests {
+    @Test func aReadWaitsForThatControlsPendingWrite() async {
+        let transport = FakeTransport(values: [VCP.brightness: (50, 100), VCP.contrast: (70, 100)])
+        let channel = DDCChannel(transport: transport, queue: DispatchQueue(label: "luna.tests.read-after-write"))
+        channel.timing = .instant
+        // Both writes wait behind the pause; the read is queued after the first drain turn.
+        channel.pause(for: 0.1)
+        channel.write(VCP.contrast, value: 30)
+        channel.write(VCP.brightness, value: 90)
+        #expect(await channel.read(VCP.brightness) == .value(current: 90, maximum: 100))
+    }
+}
+
+@Suite @MainActor struct TurnOnTests {
+    @Test func aFailedTurnOnKeepsTheWayBack() {
+        let (controller, displays) = Fixtures.controller([(.builtin, .preview), (.external, .preview)])
+        controller.canSwitchDisplays = true
+        var enableWorks = false
+        controller.setDisplayEnabled = { enabled, _ in enabled ? enableWorks : true }
+        controller.turnOff(displays[1])
+        let item = controller.disabled[0]
+
+        #expect(!controller.turnOn(item))
+        #expect(controller.disabled == [item])
+        #expect(controller.settings.disabledDisplays == [item.id])
+
+        enableWorks = true
+        #expect(controller.turnOn(item))
+        #expect(controller.disabled.isEmpty && controller.settings.disabledDisplays.isEmpty)
+    }
+}
+
+@Suite @MainActor struct ProbeCapabilityTests {
+    func ddcDisplay(_ transport: FakeTransport) -> Display {
+        let (_, displays) = Fixtures.controller([(.external, .ddc)])
+        let channel = DDCChannel(transport: transport, queue: DispatchQueue(label: "luna.tests.probe-\(UUID())"))
+        channel.timing = .instant
+        displays[0].ddc = channel
+        return displays[0]
+    }
+
+    @Test func noBrightnessControlMeansSoftwareDimming() async {
+        let transport = FakeTransport(values: [VCP.volume: (40, 100)])
+        transport.unsupported = [VCP.brightness]
+        let display = ddcDisplay(transport)
+        await display.probe()
+        #expect(display.control == .software)
+        // Its speakers still work over DDC.
+        #expect(display.hasVolume)
+        let before = transport.writes.count
+        display.setLevel(Level(brightness: 0.2))
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(!transport.writes.dropFirst(before).contains { $0.vcp == VCP.brightness })
+    }
+
+    @Test func aProbeWhileMutedKeepsTheVolumeToComeBackTo() async {
+        // No mute command (0x8D answers null), so Luna mutes by setting the volume to 0.
+        let transport = FakeTransport(values: [VCP.brightness: (50, 100), VCP.volume: (60, 100)])
+        let display = ddcDisplay(transport)
+        await display.probe()
+        #expect(display.hasVolume && !display.hasMute)
+        display.setMuted(true)
+        await display.probe()
+        #expect(abs(display.volume - 0.6) < 1e-9)
+        display.setMuted(false)
+        #expect(
+            await Fixtures.eventually { transport.writes.last.map { $0.vcp == VCP.volume && $0.value == 60 } ?? false })
+    }
+
+    @Test func nullMessagesKeepHardwareControl() async {
+        // The LG case: answers everything with null messages, obeys writes.
+        let display = ddcDisplay(FakeTransport())
+        await display.probe()
+        #expect(display.control == .ddc && display.ddcResponsive)
+    }
+}
+
+@Suite @MainActor struct AutoOffTests {
+    @Test func switchingAutoOffStopsAGlide() async {
+        let (controller, displays) = Fixtures.controller([(.builtin, .preview)])
+        let display = displays[0]
+        display.setLevel(Level(brightness: 0.8), byUser: false)
+        controller.settings.autoMode = .sun
+        display.animate(to: Level(brightness: 0.2), duration: 1)
+        try? await Task.sleep(for: .milliseconds(150))
+        controller.settings.autoMode = .off
+        controller.auto.update()
+        let stoppedAt = display.level.brightness
+        try? await Task.sleep(for: .milliseconds(400))
+        #expect(!display.isAnimating)
+        #expect(display.level.brightness == stoppedAt && stoppedAt > 0.5)
+    }
+}
+
+@Suite @MainActor struct ReconnectTests {
+    @Test func aReconnectingDisplayRespectsDimmingBeingOff() {
+        let defaults = Fixtures.defaults()
+        let settings = AppSettings(defaults: defaults)
+        let store = DisplayStore(defaults: defaults)
+        var saved = store["away"]
+        saved.level = Level(dim: 0.5, brightness: 0)
+        store["away"] = saved
+        settings.allowDimming = false
+
+        let display = Display(
+            id: 900, uuid: "away", name: "Away", kind: .external, identity: DisplayIdentity(), control: .preview,
+            app: settings, store: store)
+        #expect(display.level == Level(brightness: 0))
+        #expect(SoftwareDimming.factor(display.level, hardware: true) == 1)
+    }
+}
+
+@Suite @MainActor struct SoftwareModeRelaunchTests {
+    @Test func aMonitorSetToSoftwareStillGetsItsExtrasAfterRelaunch() async {
+        let (controller, displays) = Fixtures.controller([(.external, .software)])
+        let display = displays[0]
+        display.settings.method = .software
+        let transport = FakeTransport(values: [VCP.volume: (45, 100), VCP.contrast: (70, 100)])
+        controller.discoverChannels = { wanted, _ in
+            let channel = DDCChannel(transport: transport, queue: DispatchQueue(label: "luna.tests.relaunch"))
+            channel.timing = .instant
+            return Dictionary(uniqueKeysWithValues: wanted.map { ($0.id, channel) })
+        }
+        controller.assignDDC(among: displays)
+        #expect(display.ddc != nil)
+        // Brightness stays in software, as chosen.
+        #expect(display.control == .software)
+        await display.probe()
+        #expect(display.hasVolume && display.hasContrast)
+        #expect(abs(display.volume - 0.45) < 1e-9)
+    }
+}
+
+@Suite @MainActor struct WakeTests {
+    func ddcDisplay(_ transport: FakeTransport) -> Display {
+        let (_, displays) = Fixtures.controller([(.external, .ddc)])
+        let channel = DDCChannel(transport: transport, queue: DispatchQueue(label: "luna.tests.wake-\(UUID())"))
+        channel.timing = .instant
+        displays[0].ddc = channel
+        return displays[0]
+    }
+
+    @Test func wakingPutsMuteBack() async {
+        let transport = FakeTransport()
+        let display = ddcDisplay(transport)
+        display.hasVolume = true
+        display.hasMute = true
+        display.setMuted(true)
+        #expect(await Fixtures.eventually { transport.writes.contains { $0.vcp == VCP.mute } })
+        let before = transport.writes.count
+        display.reapply()
+        #expect(
+            await Fixtures.eventually {
+                transport.writes.dropFirst(before).contains { $0.vcp == VCP.mute && $0.value == 1 }
+            })
+    }
+
+    @Test func wakingPutsFallbackMuteBack() async {
+        let transport = FakeTransport()
+        let display = ddcDisplay(transport)
+        display.hasVolume = true
+        display.setVolume(0.5)
+        display.setMuted(true)
+        _ = await Fixtures.eventually { transport.writes.last?.value == 0 }
+        let before = transport.writes.count
+        display.reapply()
+        #expect(
+            await Fixtures.eventually {
+                transport.writes.dropFirst(before).contains { $0.vcp == VCP.volume && $0.value == 0 }
+            })
+        #expect(!transport.writes.dropFirst(before).contains { $0.vcp == VCP.volume && $0.value == 50 })
+    }
+}
+
+@Suite @MainActor struct GlideReplacementTests {
+    @Test func replacingAGlideWithTheCurrentValueClearsIt() async {
+        let (_, displays) = Fixtures.controller([(.builtin, .preview)])
+        let display = displays[0]
+        display.setLevel(Level(brightness: 0.8), byUser: false)
+        display.animate(to: Level(brightness: 0.2), duration: 1)
+        try? await Task.sleep(for: .milliseconds(100))
+        // Asked to glide to where it already is: nothing to do, and nothing left behind.
+        display.animate(to: display.level)
+        #expect(!display.isAnimating)
+        display.systemBrightnessChanged(0.5)
+        #expect(abs(display.level.brightness - 0.5) < 1e-9)
+    }
+}
+
+@Suite @MainActor struct TestControlsTests {
+    @Test func aChangeBackToTheDippedValueStillStands() async {
+        let (_, displays) = Fixtures.controller([(.builtin, .preview)])
+        let display = displays[0]
+        display.setLevel(Level(brightness: 0.6), byUser: false)
+        let test = Task { await display.runTest() }
+        try? await Task.sleep(for: .milliseconds(150))
+        display.setLevel(Level(brightness: 0.9))
+        // Back to exactly the value the test dipped to: still the user's choice.
+        display.setLevel(Level(brightness: 0.25))
+        _ = await test.value
+        #expect(abs(display.level.brightness - 0.25) < 1e-9)
+    }
+}

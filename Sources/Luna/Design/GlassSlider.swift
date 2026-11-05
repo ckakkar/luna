@@ -39,7 +39,7 @@ struct GlassSlider: View {
 
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.primary.opacity((scheme == .dark ? 0.13 : 0.11) + (hovering ? 0.03 : 0)))
+                    .fill(Color.primary.opacity((scheme == .dark ? 0.13 : 0.15) + (hovering ? 0.03 : 0)))
                     .overlay(
                         Capsule().strokeBorder(Color.primary.opacity(contrast == .increased ? 0.4 : 0), lineWidth: 1))
 
@@ -51,6 +51,7 @@ struct GlassSlider: View {
                 }
 
                 fill
+                    .overlay(Capsule().strokeBorder(Color.black.opacity(scheme == .dark ? 0 : 0.07), lineWidth: 0.5))
                     .frame(width: fillWidth)
                     .shadow(
                         color: tone == .boost ? Palette.glow.opacity(0.55) : .black.opacity(0.10),

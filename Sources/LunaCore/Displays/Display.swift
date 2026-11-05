@@ -101,7 +101,10 @@ public final class Display: Identifiable {
         self.store = store
         let settings = store[uuid]
         self.settings = settings
-        level = settings.level ?? Level(brightness: 0.7)
+        var level = settings.level ?? Level(brightness: 0.7)
+        // Saved while "Dim below 0%" was on (this display was away when it was turned off): not any more.
+        if !app.allowDimming, level.dim > 0 { level = Level(brightness: 0) }
+        self.level = level
         contrast = settings.baseContrast ?? 0.7
         volume = settings.volume ?? 0.5
         xdr = settings.xdr
@@ -179,7 +182,9 @@ public final class Display: Identifiable {
 
     /// Glides to a level, for auto brightness and presets.
     public func animate(to target: Level, duration: Double = 1.2) {
-        transition?.cancel()
+        // Cleared at once: if there's nowhere to go (already at the target), a cancelled task left here would
+        // keep blocking outside brightness changes.
+        stopGlide()
         let start = level
         guard abs(start.signed - target.signed) > 0.004 else { return }
         let steps = max(1, Int(duration * 30))
@@ -198,6 +203,12 @@ public final class Display: Identifiable {
 
     /// A glide is under way.
     var isAnimating: Bool { transition != nil }
+
+    /// Stops a glide where it is (auto brightness switched off).
+    public func stopGlide() {
+        transition?.cancel()
+        transition = nil
+    }
 
     private func update(_ newLevel: Level) {
         var newLevel = newLevel
@@ -296,9 +307,10 @@ public final class Display: Identifiable {
         let original = level
         let dipped = Level(brightness: max(0, original.brightness - 0.35))
         setLevel(dipped, byUser: false)
+        let changesAfterDip = edits[VCP.brightness]
         try? await Task.sleep(for: .milliseconds(700))
-        // Unless the brightness was changed meanwhile, which then stands.
-        if level == dipped { setLevel(original, byUser: false) }
+        // Unless the brightness was changed meanwhile (even back to the dipped value), which then stands.
+        if edits[VCP.brightness] == changesAfterDip { setLevel(original, byUser: false) }
         switch control {
         case .apple:
             guard ddc != nil else { return "Brightness is controlled by macOS, like the brightness keys." }
@@ -365,7 +377,16 @@ public final class Display: Identifiable {
     /// Pushes the current state to the hardware and overlays again, e.g. after waking.
     public func reapply() {
         applyBrightness()
-        if hasVolume, !muted { writeDDC(VCP.volume, volume) }
+        // Monitors can wake with their sound reset: put mute back too, the way it was done.
+        if muted {
+            if hasMute {
+                ddc?.write(VCP.mute, value: 1)
+            } else if hasVolume {
+                writeDDC(VCP.volume, 0)
+            }
+        } else if hasVolume {
+            writeDDC(VCP.volume, volume)
+        }
     }
 
     func applyBrightness(hardware: Bool = true) {
@@ -494,8 +515,8 @@ public final class Display: Identifiable {
     /// Reads the monitor's current values over DDC. A monitor that answers nothing is dimmed in software
     /// instead (unless Settings says to keep trying hardware).
     func probe() async {
-        guard let ddc, control == .ddc || control == .apple else { return }
-        // Over DDC, brightness too; for displays macOS controls, only the extras.
+        guard let ddc, control != .preview else { return }
+        // Over DDC, brightness too; for displays macOS or software dims, only the extras.
         let ddcBrightness = control == .ddc
         probing = true
         defer { probing = false }
@@ -503,9 +524,11 @@ public final class Display: Identifiable {
         func untouched(_ vcp: UInt8) -> Bool { edits[vcp] == editsBefore[vcp] }
 
         var responsive = false
+        var brightnessReply = DDCPacket.Reply.invalid
         func read(_ vcp: UInt8) async -> (current: Double, maximum: UInt16)? {
             let reply = await ddc.read(vcp)
             if reply != .invalid { responsive = true }
+            if vcp == VCP.brightness { brightnessReply = reply }
             guard case let .value(current, maximum) = reply, maximum > 0 else { return nil }
             ddcMaximum[vcp] = maximum
             return (Double(current) / Double(maximum), maximum)
@@ -528,7 +551,10 @@ public final class Display: Identifiable {
         }
         if let volume = await read(VCP.volume) {
             hasVolume = true
-            if untouched(VCP.volume) { self.volume = volume.current }
+            // Without a mute command Luna mutes by setting the volume to 0, so while muted that 0 isn't the
+            // volume to come back to.
+            let fakeMuted = muted && !hasMute
+            if untouched(VCP.volume), !fakeMuted { self.volume = volume.current }
         }
         let muteReply = await ddc.read(VCP.mute)
         if case let .value(current, _) = muteReply {
@@ -544,9 +570,10 @@ public final class Display: Identifiable {
 
         let answered = brightness != nil || hasContrast || hasVolume || hasMute || input != nil
         hasInput = answered
-        // A monitor that doesn't answer at all is dimmed in software. One that answers with null messages
-        // keeps hardware control: those usually obey writes even though they won't report values.
-        if !responsive, settings.method == .automatic, control == .ddc {
+        // A monitor that doesn't answer at all is dimmed in software, and so is one that says outright it has
+        // no brightness control (its volume or input may still work over DDC). One that answers with null
+        // messages keeps hardware control: those usually obey writes even though they won't report values.
+        if settings.method == .automatic, control == .ddc, !responsive || brightnessReply == .unsupported {
             control = .software
         }
         let found = [

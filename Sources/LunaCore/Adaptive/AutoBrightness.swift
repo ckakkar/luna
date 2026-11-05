@@ -22,6 +22,10 @@ public final class AutoBrightness {
     public func update() {
         timer?.invalidate()
         timer = nil
+        // Switched off: a glide on its way to the last target stops where it is.
+        if settings.autoMode == .off {
+            for display in controller.displays { display.stopGlide() }
+        }
         guard !controller.isPreview else { return }
 
         switch settings.autoMode {

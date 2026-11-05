@@ -152,22 +152,7 @@ public final class DisplayController {
         }
         for gone in displays where !next.contains(where: { $0 === gone }) { gone.detach() }
 
-        // DDC channels are matched to displays all at once: matching weighs every pair. Apple-controlled
-        // external monitors get one too, for contrast, volume and input; their brightness stays with macOS.
-        let needDDC = next.filter {
-            ($0.kind == .external || $0.kind == .apple) && $0.ddc == nil && $0.settings.method != .software
-        }
-        if !needDDC.isEmpty {
-            // Channels already driving a connected display stay theirs.
-            let taken = Set(next.compactMap { $0.ddc?.key })
-            let channels = discoverChannels(needDDC.map { ($0.id, $0.identity) }, taken)
-            for display in needDDC {
-                if let channel = channels[display.id] {
-                    display.ddc = channel
-                    if display.kind == .external { display.control = .ddc }
-                }
-            }
-        }
+        assignDDC(among: next)
 
         displays = next.sorted(by: Self.order)
         for display in added {
@@ -192,6 +177,22 @@ public final class DisplayController {
         observeSystemBrightness()
         updateCorners()
         auto.update()
+    }
+
+    /// Gives DDC channels to the displays among `list` that lack one. Channels are matched all at once
+    /// (matching weighs every pair), and ones already driving a display stay theirs. Apple-controlled monitors
+    /// and monitors set to Software dimming get one too, for contrast, volume and input; their brightness
+    /// stays with macOS or software.
+    func assignDDC(among list: [Display]) {
+        let needDDC = list.filter { ($0.kind == .external || $0.kind == .apple) && $0.ddc == nil }
+        guard !needDDC.isEmpty else { return }
+        let taken = Set(list.compactMap { $0.ddc?.key })
+        let channels = discoverChannels(needDDC.map { ($0.id, $0.identity) }, taken)
+        for display in needDDC {
+            guard let channel = channels[display.id] else { continue }
+            display.ddc = channel
+            if display.kind == .external, display.settings.method != .software { display.control = .ddc }
+        }
     }
 
     /// Keeps Apple displays' sliders in step with the brightness keys and Control Center, and feeds "Match Mac".
@@ -331,11 +332,15 @@ public final class DisplayController {
         }
     }
 
-    public func turnOn(_ item: DisabledDisplay) {
-        _ = setDisplayEnabled(true, item.id)
+    /// Turns a display back on. Only if that works are its records dropped; otherwise the row stays to try
+    /// again, and quitting or relaunching Luna retries it too.
+    @discardableResult
+    public func turnOn(_ item: DisabledDisplay) -> Bool {
+        guard setDisplayEnabled(true, item.id) else { return false }
         disabled.removeAll { $0.id == item.id }
         settings.disabledDisplays.removeAll { $0 == item.id }
         scheduleRefresh()
+        return true
     }
 
     // MARK: Rounded corners
