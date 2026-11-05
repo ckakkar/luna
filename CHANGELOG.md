@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **A modern Settings.** A floating glass sidebar over a soft aurora, a large header on each pane, and frosted cards. Each row has a coloured icon, an explanation, and the panel's own controls: capsule switches, glass pills and Control Center sliders.
+  - **Displays:** a two-knob brightness-range slider, and a hero card with a monitor that glows at the display's brightness.
+  - **Auto brightness:** the modes are tiles over a redrawn daylight sky.
+  - **Keyboard:** shortcuts show as key caps.
+  - **About:** a hero layout.
+- **The welcome window** uses the same cards, switch and a gradient button.
+- **Dependencies:** Sparkle 2.10.1; dmgbuild pinned to 1.6.7.
+
+### Fixed
+From a second code review:
+- **DDC:** a read could run ahead of that control's pending write and undo it (asking for 90% ended at 50%).
+- **Turning displays back on:** a failed **Turn On** dropped the display's records, so it couldn't be retried.
+- **Monitors without brightness control:** one that reports brightness unsupported now falls back to software dimming instead of being left undimmed.
+- **Mute:**
+  - Testing controls while muted (on monitors without a mute command) erased the volume to unmute to.
+  - Waking didn't restore mute.
+- **Auto brightness:** switching it off left a glide in progress running.
+- **Dim below 0%:** a display reconnecting after the setting was turned off came back dimmed.
+- **Software dimming:** monitors set to it lost volume, contrast and input after a relaunch.
+- **Outside brightness changes:** re-animating to the current value left the slider ignoring the keys and Control Center.
+- **Test Controls:** it could overwrite a change that landed back on its dipped value.
+
 ### Fixed
 From a code review (issues #5–#16):
 - **Turning displays off:** two quick clicks could turn off every display. Luna now always keeps one on. (#5)
