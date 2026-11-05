@@ -123,12 +123,30 @@ struct ShortcutRecorder: View {
             Button {
                 recording ? stop() : start()
             } label: {
-                Text(recording ? "Type a shortcut…" : combo.map(KeyNames.string(for:)) ?? "Record Shortcut")
-                    .font(.system(size: 12, weight: combo == nil || recording ? .regular : .medium).monospaced())
-                    .foregroundStyle(recording ? Color.accentColor : combo == nil ? Color.secondary : Color.primary)
-                    .frame(minWidth: 128)
+                HStack(spacing: 5) {
+                    if recording {
+                        Circle().fill(Color.red).frame(width: 6, height: 6)
+                        Text("Type a shortcut")
+                    } else if let combo {
+                        // Each key as its own cap.
+                        ForEach(Array(KeyNames.string(for: combo).map(String.init).enumerated()), id: \.offset) {
+                            Text($0.element)
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .frame(minWidth: 18, minHeight: 18)
+                                .padding(.horizontal, 3)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .fill(Color.primary.opacity(0.10))
+                                        .shadow(color: .black.opacity(0.15), radius: 0, y: 1))
+                        }
+                    } else {
+                        Image(systemName: "record.circle").font(.system(size: 10, weight: .bold))
+                        Text("Record")
+                    }
+                }
+                .frame(minWidth: 96)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(ChipButtonStyle(prominent: recording))
             if combo != nil, !recording {
                 Button {
                     onChange(nil)
@@ -139,6 +157,7 @@ struct ShortcutRecorder: View {
                 .help("Remove shortcut")
             }
         }
+        .animation(.luna, value: recording)
         .onDisappear { stop() }
     }
 

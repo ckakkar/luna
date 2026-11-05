@@ -14,7 +14,7 @@ final class WelcomeWindowController {
 
     func show() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 560),
             styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
@@ -44,90 +44,93 @@ struct WelcomeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Image(nsImage: AppInfo.icon)
-                .resizable()
-                .frame(width: 92, height: 92)
-                .shadow(color: .indigo.opacity(0.35), radius: 18, y: 8)
-                .scaleEffect(appeared ? 1 : 0.85)
-                .opacity(appeared ? 1 : 0)
-                .padding(.top, 34)
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color(red: 0.55, green: 0.5, blue: 1).opacity(0.5), .clear], center: .center,
+                            startRadius: 8, endRadius: 100)
+                    )
+                    .frame(width: 200, height: 200)
+                Image(nsImage: AppInfo.icon)
+                    .resizable()
+                    .frame(width: 100, height: 100)
+                    .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
+            }
+            .scaleEffect(appeared ? 1 : 0.85)
+            .opacity(appeared ? 1 : 0)
+            .padding(.top, 4)
+            .padding(.bottom, -40)
 
             Text("Welcome to Luna")
-                .font(.system(size: 26, weight: .bold, design: .rounded))
-                .padding(.top, 16)
+                .font(.system(size: 28, weight: .bold, design: .rounded))
             Text("Every display, as easy as your Mac's own.")
+                .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
 
-            VStack(spacing: 10) {
-                step(
+            SettingsCard {
+                SettingRow(
                     symbol: "menubar.arrow.up.rectangle", color: .purple, title: "Lives in your menu bar",
                     detail: "Click the moon at the top of the screen for brightness, volume and more."
-                ) {
-                    EmptyView()
-                }
-                step(
+                ) { EmptyView() }
+                RowDivider()
+                SettingRow(
                     symbol: "keyboard.fill", color: .blue, title: "Use your brightness keys",
                     detail: "On every display, with sound too. Needs Accessibility permission."
                 ) {
                     if model.keysEnabled {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.title3)
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.green)
+                            .transition(.scale.combined(with: .opacity))
                     } else {
                         Button("Enable") { model.enableKeys() }
+                            .buttonStyle(ChipButtonStyle(prominent: true))
                     }
                 }
-                step(
+                RowDivider()
+                SettingRow(
                     symbol: "power", color: .green, title: "Open at login",
                     detail: "So your displays are set up as soon as you sign in."
                 ) {
-                    Toggle("Open at login", isOn: $launchAtLogin)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .onChange(of: launchAtLogin) { _, on in LaunchAtLogin.set(on) }
+                    CapsuleSwitch(label: "Open at login", isOn: $launchAtLogin)
                 }
             }
-            .padding(.top, 26)
-            .padding(.horizontal, 28)
+            .padding(.top, 24)
+            .padding(.horizontal, 26)
+            .onChange(of: launchAtLogin) { _, on in LaunchAtLogin.set(on) }
 
-            Spacer(minLength: 20)
+            Spacer(minLength: 18)
 
             Button(action: onDone) {
                 Text("Get Started")
                     .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 30)
+                    .frame(height: 40)
+                    .background(
+                        Capsule().fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.45, green: 0.42, blue: 1.0), Color(red: 0.32, green: 0.36, blue: 0.92),
+                                ],
+                                startPoint: .top, endPoint: .bottom))
+                    )
+                    .shadow(color: Color(red: 0.4, green: 0.38, blue: 1).opacity(0.45), radius: 12, y: 4)
+                    .contentShape(Capsule())
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .buttonStyle(PressableStyle())
             .keyboardShortcut(.defaultAction)
-            .padding(.horizontal, 28)
-            .padding(.bottom, 26)
+            .padding(.horizontal, 26)
+            .padding(.bottom, 24)
         }
-        .frame(width: 460, height: 520)
+        .frame(width: 480, height: 560)
+        .background(AuroraBackground())
         .focusEffectDisabled()
+        .animation(.luna, value: model.keysEnabled)
         .onAppear {
             withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.1)) { appeared = true }
         }
-    }
-
-    private func step<Accessory: View>(
-        symbol: String, color: Color, title: String, detail: String, @ViewBuilder accessory: () -> Accessory
-    ) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: symbol)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 36, height: 36)
-                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(color.gradient))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: .semibold))
-                Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(
-                    horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 8)
-            accessory()
-        }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.05)))
     }
 }
