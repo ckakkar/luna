@@ -530,7 +530,10 @@ public final class Display: Identifiable {
         }
         if let volume = await read(VCP.volume) {
             hasVolume = true
-            if untouched(VCP.volume) { self.volume = volume.current }
+            // Without a mute command Luna mutes by setting the volume to 0, so while muted that 0 isn't the
+            // volume to come back to.
+            let fakeMuted = muted && !hasMute
+            if untouched(VCP.volume), !fakeMuted { self.volume = volume.current }
         }
         let muteReply = await ddc.read(VCP.mute)
         if case let .value(current, _) = muteReply {

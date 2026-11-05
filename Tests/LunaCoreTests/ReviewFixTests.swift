@@ -294,6 +294,20 @@ import Testing
         #expect(!transport.writes.dropFirst(before).contains { $0.vcp == VCP.brightness })
     }
 
+    @Test func aProbeWhileMutedKeepsTheVolumeToComeBackTo() async {
+        // No mute command (0x8D answers null), so Luna mutes by setting the volume to 0.
+        let transport = FakeTransport(values: [VCP.brightness: (50, 100), VCP.volume: (60, 100)])
+        let display = ddcDisplay(transport)
+        await display.probe()
+        #expect(display.hasVolume && !display.hasMute)
+        display.setMuted(true)
+        await display.probe()
+        #expect(abs(display.volume - 0.6) < 1e-9)
+        display.setMuted(false)
+        #expect(
+            await Fixtures.eventually { transport.writes.last.map { $0.vcp == VCP.volume && $0.value == 60 } ?? false })
+    }
+
     @Test func nullMessagesKeepHardwareControl() async {
         // The LG case: answers everything with null messages, obeys writes.
         let display = ddcDisplay(FakeTransport())
