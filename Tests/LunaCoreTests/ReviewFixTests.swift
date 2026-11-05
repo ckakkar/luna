@@ -270,3 +270,34 @@ import Testing
         #expect(controller.disabled.isEmpty && controller.settings.disabledDisplays.isEmpty)
     }
 }
+
+@Suite @MainActor struct ProbeCapabilityTests {
+    func ddcDisplay(_ transport: FakeTransport) -> Display {
+        let (_, displays) = Fixtures.controller([(.external, .ddc)])
+        let channel = DDCChannel(transport: transport, queue: DispatchQueue(label: "luna.tests.probe-\(UUID())"))
+        channel.timing = .instant
+        displays[0].ddc = channel
+        return displays[0]
+    }
+
+    @Test func noBrightnessControlMeansSoftwareDimming() async {
+        let transport = FakeTransport(values: [VCP.volume: (40, 100)])
+        transport.unsupported = [VCP.brightness]
+        let display = ddcDisplay(transport)
+        await display.probe()
+        #expect(display.control == .software)
+        // Its speakers still work over DDC.
+        #expect(display.hasVolume)
+        let before = transport.writes.count
+        display.setLevel(Level(brightness: 0.2))
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(!transport.writes.dropFirst(before).contains { $0.vcp == VCP.brightness })
+    }
+
+    @Test func nullMessagesKeepHardwareControl() async {
+        // The LG case: answers everything with null messages, obeys writes.
+        let display = ddcDisplay(FakeTransport())
+        await display.probe()
+        #expect(display.control == .ddc && display.ddcResponsive)
+    }
+}

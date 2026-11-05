@@ -503,9 +503,11 @@ public final class Display: Identifiable {
         func untouched(_ vcp: UInt8) -> Bool { edits[vcp] == editsBefore[vcp] }
 
         var responsive = false
+        var brightnessReply = DDCPacket.Reply.invalid
         func read(_ vcp: UInt8) async -> (current: Double, maximum: UInt16)? {
             let reply = await ddc.read(vcp)
             if reply != .invalid { responsive = true }
+            if vcp == VCP.brightness { brightnessReply = reply }
             guard case let .value(current, maximum) = reply, maximum > 0 else { return nil }
             ddcMaximum[vcp] = maximum
             return (Double(current) / Double(maximum), maximum)
@@ -544,9 +546,10 @@ public final class Display: Identifiable {
 
         let answered = brightness != nil || hasContrast || hasVolume || hasMute || input != nil
         hasInput = answered
-        // A monitor that doesn't answer at all is dimmed in software. One that answers with null messages
-        // keeps hardware control: those usually obey writes even though they won't report values.
-        if !responsive, settings.method == .automatic, control == .ddc {
+        // A monitor that doesn't answer at all is dimmed in software, and so is one that says outright it has
+        // no brightness control (its volume or input may still work over DDC). One that answers with null
+        // messages keeps hardware control: those usually obey writes even though they won't report values.
+        if settings.method == .automatic, control == .ddc, !responsive || brightnessReply == .unsupported {
             control = .software
         }
         let found = [
