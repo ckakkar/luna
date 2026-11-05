@@ -251,3 +251,22 @@ import Testing
         #expect(await channel.read(VCP.brightness) == .value(current: 90, maximum: 100))
     }
 }
+
+@Suite @MainActor struct TurnOnTests {
+    @Test func aFailedTurnOnKeepsTheWayBack() {
+        let (controller, displays) = Fixtures.controller([(.builtin, .preview), (.external, .preview)])
+        controller.canSwitchDisplays = true
+        var enableWorks = false
+        controller.setDisplayEnabled = { enabled, _ in enabled ? enableWorks : true }
+        controller.turnOff(displays[1])
+        let item = controller.disabled[0]
+
+        #expect(!controller.turnOn(item))
+        #expect(controller.disabled == [item])
+        #expect(controller.settings.disabledDisplays == [item.id])
+
+        enableWorks = true
+        #expect(controller.turnOn(item))
+        #expect(controller.disabled.isEmpty && controller.settings.disabledDisplays.isEmpty)
+    }
+}

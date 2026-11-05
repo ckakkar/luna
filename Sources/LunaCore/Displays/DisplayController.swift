@@ -331,11 +331,15 @@ public final class DisplayController {
         }
     }
 
-    public func turnOn(_ item: DisabledDisplay) {
-        _ = setDisplayEnabled(true, item.id)
+    /// Turns a display back on. Only if that works are its records dropped; otherwise the row stays to try
+    /// again, and quitting or relaunching Luna retries it too.
+    @discardableResult
+    public func turnOn(_ item: DisabledDisplay) -> Bool {
+        guard setDisplayEnabled(true, item.id) else { return false }
         disabled.removeAll { $0.id == item.id }
         settings.disabledDisplays.removeAll { $0 == item.id }
         scheduleRefresh()
+        return true
     }
 
     // MARK: Rounded corners
