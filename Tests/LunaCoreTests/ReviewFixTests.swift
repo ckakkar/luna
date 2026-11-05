@@ -350,3 +350,24 @@ import Testing
         #expect(SoftwareDimming.factor(display.level, hardware: true) == 1)
     }
 }
+
+@Suite @MainActor struct SoftwareModeRelaunchTests {
+    @Test func aMonitorSetToSoftwareStillGetsItsExtrasAfterRelaunch() async {
+        let (controller, displays) = Fixtures.controller([(.external, .software)])
+        let display = displays[0]
+        display.settings.method = .software
+        let transport = FakeTransport(values: [VCP.volume: (45, 100), VCP.contrast: (70, 100)])
+        controller.discoverChannels = { wanted, _ in
+            let channel = DDCChannel(transport: transport, queue: DispatchQueue(label: "luna.tests.relaunch"))
+            channel.timing = .instant
+            return Dictionary(uniqueKeysWithValues: wanted.map { ($0.id, channel) })
+        }
+        controller.assignDDC(among: displays)
+        #expect(display.ddc != nil)
+        // Brightness stays in software, as chosen.
+        #expect(display.control == .software)
+        await display.probe()
+        #expect(display.hasVolume && display.hasContrast)
+        #expect(abs(display.volume - 0.45) < 1e-9)
+    }
+}

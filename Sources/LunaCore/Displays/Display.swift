@@ -503,8 +503,8 @@ public final class Display: Identifiable {
     /// Reads the monitor's current values over DDC. A monitor that answers nothing is dimmed in software
     /// instead (unless Settings says to keep trying hardware).
     func probe() async {
-        guard let ddc, control == .ddc || control == .apple else { return }
-        // Over DDC, brightness too; for displays macOS controls, only the extras.
+        guard let ddc, control != .preview else { return }
+        // Over DDC, brightness too; for displays macOS or software dims, only the extras.
         let ddcBrightness = control == .ddc
         probing = true
         defer { probing = false }
