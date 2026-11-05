@@ -307,9 +307,10 @@ public final class Display: Identifiable {
         let original = level
         let dipped = Level(brightness: max(0, original.brightness - 0.35))
         setLevel(dipped, byUser: false)
+        let changesAfterDip = edits[VCP.brightness]
         try? await Task.sleep(for: .milliseconds(700))
-        // Unless the brightness was changed meanwhile, which then stands.
-        if level == dipped { setLevel(original, byUser: false) }
+        // Unless the brightness was changed meanwhile (even back to the dipped value), which then stands.
+        if edits[VCP.brightness] == changesAfterDip { setLevel(original, byUser: false) }
         switch control {
         case .apple:
             guard ddc != nil else { return "Brightness is controlled by macOS, like the brightness keys." }

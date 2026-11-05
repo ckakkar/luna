@@ -427,3 +427,18 @@ import Testing
         #expect(abs(display.level.brightness - 0.5) < 1e-9)
     }
 }
+
+@Suite @MainActor struct TestControlsTests {
+    @Test func aChangeBackToTheDippedValueStillStands() async {
+        let (_, displays) = Fixtures.controller([(.builtin, .preview)])
+        let display = displays[0]
+        display.setLevel(Level(brightness: 0.6), byUser: false)
+        let test = Task { await display.runTest() }
+        try? await Task.sleep(for: .milliseconds(150))
+        display.setLevel(Level(brightness: 0.9))
+        // Back to exactly the value the test dipped to: still the user's choice.
+        display.setLevel(Level(brightness: 0.25))
+        _ = await test.value
+        #expect(abs(display.level.brightness - 0.25) < 1e-9)
+    }
+}
