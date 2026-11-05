@@ -374,7 +374,16 @@ public final class Display: Identifiable {
     /// Pushes the current state to the hardware and overlays again, e.g. after waking.
     public func reapply() {
         applyBrightness()
-        if hasVolume, !muted { writeDDC(VCP.volume, volume) }
+        // Monitors can wake with their sound reset: put mute back too, the way it was done.
+        if muted {
+            if hasMute {
+                ddc?.write(VCP.mute, value: 1)
+            } else if hasVolume {
+                writeDDC(VCP.volume, 0)
+            }
+        } else if hasVolume {
+            writeDDC(VCP.volume, volume)
+        }
     }
 
     func applyBrightness(hardware: Bool = true) {

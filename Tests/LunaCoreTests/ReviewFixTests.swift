@@ -371,3 +371,44 @@ import Testing
         #expect(abs(display.volume - 0.45) < 1e-9)
     }
 }
+
+@Suite @MainActor struct WakeTests {
+    func ddcDisplay(_ transport: FakeTransport) -> Display {
+        let (_, displays) = Fixtures.controller([(.external, .ddc)])
+        let channel = DDCChannel(transport: transport, queue: DispatchQueue(label: "luna.tests.wake-\(UUID())"))
+        channel.timing = .instant
+        displays[0].ddc = channel
+        return displays[0]
+    }
+
+    @Test func wakingPutsMuteBack() async {
+        let transport = FakeTransport()
+        let display = ddcDisplay(transport)
+        display.hasVolume = true
+        display.hasMute = true
+        display.setMuted(true)
+        #expect(await Fixtures.eventually { transport.writes.contains { $0.vcp == VCP.mute } })
+        let before = transport.writes.count
+        display.reapply()
+        #expect(
+            await Fixtures.eventually {
+                transport.writes.dropFirst(before).contains { $0.vcp == VCP.mute && $0.value == 1 }
+            })
+    }
+
+    @Test func wakingPutsFallbackMuteBack() async {
+        let transport = FakeTransport()
+        let display = ddcDisplay(transport)
+        display.hasVolume = true
+        display.setVolume(0.5)
+        display.setMuted(true)
+        _ = await Fixtures.eventually { transport.writes.last?.value == 0 }
+        let before = transport.writes.count
+        display.reapply()
+        #expect(
+            await Fixtures.eventually {
+                transport.writes.dropFirst(before).contains { $0.vcp == VCP.volume && $0.value == 0 }
+            })
+        #expect(!transport.writes.dropFirst(before).contains { $0.vcp == VCP.volume && $0.value == 50 })
+    }
+}
