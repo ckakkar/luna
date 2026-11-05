@@ -12,9 +12,9 @@ app=$1
 dmg=$2
 
 venv=.build/dmg-venv
-if [[ ! -x "$venv/bin/dmgbuild" ]]; then
+if [[ "$("$venv/bin/pip" show dmgbuild 2>/dev/null | awk '/^Version/ {print $2}')" != "1.6.7" ]]; then
     python3 -m venv "$venv"
-    "$venv/bin/pip" install --quiet --disable-pip-version-check "dmgbuild==1.6.*"
+    "$venv/bin/pip" install --quiet --disable-pip-version-check "dmgbuild==1.6.7"
 fi
 
 work=build/dmg
