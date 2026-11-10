@@ -16,7 +16,7 @@ enum Snapshot {
     }
 
     enum Target {
-        /// One window on its own, with its shadowless frame.
+        /// One window on its own, with its shadow.
         case window(NSWindow)
         /// Everything Luna shows from this window up, within its frame (the panel over the backdrop).
         case stack(above: NSWindow)
@@ -39,10 +39,10 @@ enum Snapshot {
     @MainActor private static func capture(_ target: Target) -> CGImage? {
         guard let createImage else { return nil }
         // kCGWindowListOptionIncludingWindow 8, kCGWindowListOptionOnScreenAboveWindow 2;
-        // kCGWindowImageBoundsIgnoreFraming 1, kCGWindowImageBestResolution 8.
+        // kCGWindowImageBestResolution 8 (and the window's shadow comes along, as in a screenshot).
         switch target {
         case let .window(window):
-            return createImage(.null, 8, UInt32(window.windowNumber), 1 | 8)?.takeRetainedValue()
+            return createImage(.null, 8, UInt32(window.windowNumber), 8)?.takeRetainedValue()
         case let .stack(window):
             // Quartz coordinates: from the top of the main screen, downwards.
             let height = NSScreen.screens.first?.frame.height ?? 0
