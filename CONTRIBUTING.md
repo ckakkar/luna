@@ -30,6 +30,7 @@ make preview ARGS="--dark --displays 3 --backdrop --snapshot panel.png"
 - `make check` must pass: `swift format lint --strict` (config in `.swift-format`), a warning-free build in the Swift 6 language mode, and the tests. CI enforces all three.
 - Logic that can be tested without hardware lives in `LunaCore` and gets tests in `Tests/LunaCoreTests`. That covers DDC packets, display matching, slider zones, curves, solar maths and settings.
 - UI changes: look at them with `make preview` in light and dark, with none, one and three displays, and with Increase Contrast and Reduce Motion on.
+- Panel changes: `make uicheck` drives the sliders with real key events (Tab, Shift-Tab, arrows) in a preview and checks the focus rules. It needs no permissions.
 - Hardware changes: run `make selftest` on a real display.
 - Callbacks from macOS (C function pointers, DisplayServices, Carbon) are plain `nonisolated` functions that hop to the main actor. A closure written inside main-actor code inherits that isolation, and Swift 6 traps at runtime when macOS calls it from another thread; Luna 0.1.4 crashed at launch this way.
 - Private macOS APIs go through `Sources/CPrivate` only, looked up with `dlsym`, so a missing symbol degrades a feature instead of crashing.

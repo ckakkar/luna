@@ -86,7 +86,8 @@ struct GlassSlider: View {
         )
         .onChange(of: focused) { _, isFocused in
             // Tab turns keyboard mode on; focus macOS hands out for other reasons (the panel opening) turns it off.
-            if isFocused { keyboard.active = NSApp.currentEvent?.type == .keyDown }
+            // SwiftUI reports the change a moment later, often while the Tab's key-up is the current event.
+            if isFocused { keyboard.active = [.keyDown, .keyUp].contains(NSApp.currentEvent?.type) }
         }
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
             guard keyboardFocus else { return .ignored }

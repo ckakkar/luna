@@ -1,6 +1,6 @@
 # Common tasks for Luna; run `make` for the list. `make check` mirrors CI.
 .DEFAULT_GOAL := help
-.PHONY: help run preview selftest install dmg check build test lint fmt icons clean
+.PHONY: help run preview uicheck selftest install dmg check build test lint fmt icons clean
 
 APP_DIR ?= /Applications
 
@@ -20,6 +20,10 @@ preview: ## The panel with made-up displays, for design work (ARGS="--dark --dis
 	@pkill -f 'build/debug/Luna.app/Contents/MacOS/Luna --preview' 2>/dev/null || true  # earlier previews only
 	scripts/build-app.sh --debug --out build/debug
 	build/debug/Luna.app/Contents/MacOS/Luna --preview $(ARGS) &
+
+uicheck: ## Drive the preview panel with the keyboard (Tab, Shift-Tab, arrows) and check it; no hardware
+	scripts/build-app.sh --debug --out build/debug
+	@for n in 1 3; do build/debug/Luna.app/Contents/MacOS/Luna --preview --displays $$n --keyboard-check || exit 1; done
 
 selftest: ## Drive the real app against your displays and check every feature (quits the installed Luna; the screen flickers)
 	@pkill -x Luna 2>/dev/null || true

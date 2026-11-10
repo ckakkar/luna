@@ -77,6 +77,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.keys.showBrightnessHUD(display)
                 }
             }
+            if options.keyboardCheck {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                    guard let model = self?.model else { return }
+                    var check = KeyboardCheck(model: model)
+                    Task { await check.run() }
+                }
+            }
             if let path = options.snapshot {
                 // The indicator fades after a moment and the backdrop sits behind the panel: catch each right.
                 let delay = options.snapshotDelay ?? (options.showHUD ? 2.6 : 3)
@@ -225,6 +232,8 @@ struct LaunchOptions {
     /// `--snapshot <file.png>`: save a picture of the preview and quit (see `Snapshot`).
     var snapshot: String?
     var snapshotDelay: TimeInterval?
+    /// `--keyboard-check`: drive the preview panel's sliders with the keyboard and report (see `KeyboardCheck`).
+    var keyboardCheck = false
 
     init(arguments: [String]) {
         preview = arguments.contains("--preview")
@@ -254,6 +263,7 @@ struct LaunchOptions {
         if let index = arguments.firstIndex(of: "--snapshot-delay"), index + 1 < arguments.count {
             snapshotDelay = TimeInterval(arguments[index + 1])
         }
+        keyboardCheck = arguments.contains("--keyboard-check")
         selfTest = arguments.contains("--self-test")
         quiet = arguments.contains("--quiet")
         if let index = arguments.firstIndex(of: "--settings"), index + 1 < arguments.count {
