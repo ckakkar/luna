@@ -42,6 +42,8 @@ public final class AutoBrightness {
             timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.followSun() }
             }
+            // The sun moves slowly: let macOS fold this wakeup in with others.
+            timer?.tolerance = 12
         }
     }
 
