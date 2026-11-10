@@ -467,6 +467,8 @@ public final class Display: Identifiable {
                 screen: screen, value: multiplier, avoidingCorner: app.roundedCorners ? app.cornerRadius * 1.6 : 0)
         }
         edrTrigger?.value = multiplier
+        // updateBoost runs when an input changed (headroom too): draw the trigger again in case that's why.
+        edrTrigger?.refresh()
         // The table works on gamma-encoded values, so the lift for a given gain in light is its 2.2th root.
         gammaBoost = inputs.gammaFactor
         startBoostWatch()

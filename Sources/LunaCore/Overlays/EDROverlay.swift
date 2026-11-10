@@ -85,10 +85,17 @@ public final class EDROverlay: NSObject, MTKViewDelegate {
 /// lift the colour table into it. It sits on the top edge, clear of a rounded corner.
 @MainActor
 public final class EDRTrigger: NSObject, MTKViewDelegate {
-    /// A/B on real HDR panels before enabling by default. Launch with LUNA_EDR_TRIGGER_ON_DEMAND=1
-    /// to retain the last Metal drawable and redraw only after a value or environment change.
-    /// Without it, the existing 2 fps keepalive remains available.
-    static let usesOnDemandDrawing = ProcessInfo.processInfo.environment["LUNA_EDR_TRIGGER_ON_DEMAND"] == "1"
+    /// The trigger draws once and redraws only when something changes (its value, its screen, the panel's
+    /// headroom: see `refresh()`), rather than at 2 fps. On the LG 5K in HDR mode the retained frame held the
+    /// headroom open (5.0×) for minutes, at 0.13% CPU idle instead of 0.61%. LUNA_EDR_TRIGGER_KEEPALIVE=1
+    /// brings back the 2 fps keepalive, for a panel that turns out to need it.
+    static let usesOnDemandDrawing = ProcessInfo.processInfo.environment["LUNA_EDR_TRIGGER_KEEPALIVE"] != "1"
+
+    /// Draws the trigger again: the watchdog calls this whenever the boost's inputs change (headroom closing
+    /// included), so a frame the system stopped counting is replaced within a second.
+    public func refresh() {
+        if Self.usesOnDemandDrawing { view.needsDisplay = true }
+    }
 
     private let window: ClickThroughWindow
     private let view: MTKView
