@@ -362,7 +362,8 @@ public final class Display: Identifiable {
     /// Contrast follows brightness down to 60% of its normal value.
     private var linkedContrastFactor: Double { 0.6 + 0.4 * level.brightness }
 
-    private var hardwareBrightness: Double {
+    /// The brightness sent to the display: the level within this display's brightness range.
+    public var hardwareBrightness: Double {
         settings.minBrightness + level.brightness * (settings.maxBrightness - settings.minBrightness)
     }
 
