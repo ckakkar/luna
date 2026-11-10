@@ -22,14 +22,8 @@ final class KeyController {
     init(model: AppModel) {
         self.model = model
         DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name("com.apple.accessibility.api"), object: nil, queue: .main
-        ) { [weak self] _ in
-            // The setting changes a moment after the notification.
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(500))
-                self?.start()
-            }
-        }
+            forName: NSNotification.Name("com.apple.accessibility.api"), object: nil, queue: nil,
+            using: keyAccessChanged(for: self))
     }
 
     private var controller: DisplayController { model.controller }
@@ -43,6 +37,11 @@ final class KeyController {
             stop()
             return
         }
+        // A distributed notification can grant access before the next poll. Stop even if the tap is
+        // already enabled, so successful grants never leave the waiting timer running.
+        accessPoll?.invalidate()
+        accessPoll = nil
+        accessPollRemaining = 0
         if let tap, CGEvent.tapIsEnabled(tap: tap) { return }
         stop()
         // Only NX_SYSDEFINED events (the media keys); Luna never sees ordinary typing.
@@ -74,12 +73,11 @@ final class KeyController {
         }
         accessPoll?.invalidate()
         accessPollRemaining = 180
-        accessPoll = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.pollAccess() }
-        }
+        accessPoll = Timer.scheduledTimer(withTimeInterval: 1, repeats: true, block: keyAccessPoll(for: self))
+        accessPoll?.tolerance = 0.2
     }
 
-    private func pollAccess() {
+    fileprivate func pollAccess() {
         accessPollRemaining -= 1
         guard AXIsProcessTrusted() || accessPollRemaining <= 0 else { return }
         accessPoll?.invalidate()
@@ -168,6 +166,22 @@ final class KeyController {
             value: muted ? 0 : display.volume,
             label: muted ? "Muted" : "\(Int((display.volume * 100).rounded()))")
         return true
+    }
+}
+
+nonisolated private func keyAccessChanged(for controller: KeyController) -> @Sendable (Notification) -> Void {
+    { [weak controller] _ in
+        Task { @MainActor in
+            // The setting changes a moment after the notification.
+            try? await Task.sleep(for: .milliseconds(500))
+            controller?.start()
+        }
+    }
+}
+
+nonisolated private func keyAccessPoll(for controller: KeyController) -> @Sendable (Timer) -> Void {
+    { [weak controller] _ in
+        Task { @MainActor in controller?.pollAccess() }
     }
 }
 

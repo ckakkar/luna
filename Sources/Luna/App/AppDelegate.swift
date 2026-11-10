@@ -10,7 +10,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var welcome: WelcomeWindowController?
     private var keys: KeyController!
     private var signalSources: [DispatchSourceSignal] = []
-    private var glyphTimer: Timer?
     private var backdrop: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -55,10 +54,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.start()
         if !options.preview { keys.start() }
         watchSignals()
-
-        glyphTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.panel.updateGlyph() }
-        }
 
         if options.selfTest {
             let test = SelfTest(model: model, panel: panel, keys: keys, settingsWindow: settingsWindow)
