@@ -14,7 +14,9 @@ public final class EDROverlay: NSObject, MTKViewDelegate {
 
     /// How much to multiply the screen by, 1… the display's headroom.
     public var multiplier: Double {
-        didSet { updateClearColor() }
+        didSet {
+            if multiplier != oldValue { updateClearColor() }
+        }
     }
 
     public init?(screen: NSScreen, multiplier: Double) {
@@ -83,6 +85,11 @@ public final class EDROverlay: NSObject, MTKViewDelegate {
 /// lift the colour table into it. It sits on the top edge, clear of a rounded corner.
 @MainActor
 public final class EDRTrigger: NSObject, MTKViewDelegate {
+    /// A/B on real HDR panels before enabling by default. Launch with LUNA_EDR_TRIGGER_ON_DEMAND=1
+    /// to retain the last Metal drawable and redraw only after a value or environment change.
+    /// Without it, the existing 2 fps keepalive remains available.
+    static let usesOnDemandDrawing = ProcessInfo.processInfo.environment["LUNA_EDR_TRIGGER_ON_DEMAND"] == "1"
+
     private let window: ClickThroughWindow
     private let view: MTKView
     private let queue: MTLCommandQueue
@@ -92,7 +99,9 @@ public final class EDRTrigger: NSObject, MTKViewDelegate {
     public var value: Double {
         didSet {
             let v = max(1.05, value)
+            guard v != max(1.05, oldValue) else { return }
             view.clearColor = MTLClearColor(red: v, green: v, blue: v, alpha: 1)
+            if Self.usesOnDemandDrawing { view.needsDisplay = true }
         }
     }
 
@@ -112,9 +121,12 @@ public final class EDRTrigger: NSObject, MTKViewDelegate {
         let v = max(1.05, value)
         view.clearColor = MTLClearColor(red: v, green: v, blue: v, alpha: 1)
         view.preferredFramesPerSecond = 2
+        view.enableSetNeedsDisplay = Self.usesOnDemandDrawing
+        view.isPaused = Self.usesOnDemandDrawing
         view.delegate = self
         window.contentView = view
         window.orderFrontRegardless()
+        if Self.usesOnDemandDrawing { view.needsDisplay = true }
     }
 
     private static func frame(on screen: NSScreen, inset: CGFloat) -> NSRect {
@@ -122,8 +134,10 @@ public final class EDRTrigger: NSObject, MTKViewDelegate {
     }
 
     public func move(to screen: NSScreen) {
-        window.setFrame(Self.frame(on: screen, inset: inset), display: true)
+        let frame = Self.frame(on: screen, inset: inset)
+        if window.frame != frame { window.setFrame(frame, display: true) }
         window.orderFrontRegardless()
+        if Self.usesOnDemandDrawing { view.needsDisplay = true }
     }
 
     public func close() {
