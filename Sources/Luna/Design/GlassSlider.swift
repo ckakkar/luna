@@ -30,7 +30,7 @@ struct GlassSlider: View {
     @ViewState private var lastMarkerSide: [Int] = []
     @FocusState private var focused: Bool
     /// Shared by every slider: whether the keyboard is driving them (see `SliderKeyboard`).
-    private var keyboard = SliderKeyboard.shared
+    private var keyboard: SliderKeyboard { .shared }
     private var keyboardFocus: Bool { focused && keyboard.active }
     @Environment(\.colorScheme) private var scheme
     @Environment(\.colorSchemeContrast) private var contrast
