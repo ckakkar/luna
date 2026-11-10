@@ -29,9 +29,9 @@ struct GlassSlider: View {
     @ViewState private var tappingIcon = false
     @ViewState private var lastMarkerSide: [Int] = []
     @FocusState private var focused: Bool
-    /// Focus that came from the keyboard (Tab). macOS also focuses a slider when the panel opens or one is
-    /// clicked; that focus shows no ring and doesn't take the arrow keys.
-    @ViewState private var keyboardFocus = false
+    /// Shared by every slider: whether the keyboard is driving them (see `SliderKeyboard`).
+    private var keyboard = SliderKeyboard.shared
+    private var keyboardFocus: Bool { focused && keyboard.active }
     @Environment(\.colorScheme) private var scheme
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -85,7 +85,8 @@ struct GlassSlider: View {
             Capsule().strokeBorder(Color.accentColor.opacity(keyboardFocus ? 0.85 : 0), lineWidth: 2).padding(-3)
         )
         .onChange(of: focused) { _, isFocused in
-            keyboardFocus = isFocused && NSApp.currentEvent?.type == .keyDown
+            // Tab turns keyboard mode on; focus macOS hands out for other reasons (the panel opening) turns it off.
+            if isFocused { keyboard.active = NSApp.currentEvent?.type == .keyDown }
         }
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
             guard keyboardFocus else { return .ignored }
@@ -138,9 +139,9 @@ struct GlassSlider: View {
         DragGesture(minimumDistance: 0)
             .onChanged { gesture in
                 if !dragging {
-                    // The mouse took over: the slider leaves keyboard mode (no ring, arrows pass through) even
-                    // though it keeps focus, so a click can't leave it reacting to the arrow keys.
-                    keyboardFocus = false
+                    // The mouse took over: keyboard mode ends for every slider (no ring, arrows pass through),
+                    // whichever one still has focus, so a click can't leave any reacting to the arrow keys.
+                    keyboard.active = false
                     lastMarkerSide = markers.map { value >= $0 ? 1 : 0 }
                     if onIconTap != nil, gesture.startLocation.x < height {
                         tappingIcon = true
@@ -170,4 +171,13 @@ struct GlassSlider: View {
         }
         lastMarkerSide = sides
     }
+}
+
+/// Whether the keyboard is driving the sliders. Tab turns it on; any slider click or drag, or focus macOS
+/// assigns on its own (the panel opening), turns it off. Only then does the focused slider show its ring and
+/// take the arrow keys, so a slider the mouse last used never moves under the arrow keys by surprise.
+@MainActor @Observable
+final class SliderKeyboard {
+    static let shared = SliderKeyboard()
+    var active = false
 }
