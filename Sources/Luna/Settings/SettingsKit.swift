@@ -43,6 +43,7 @@ struct IconTile: View {
                     .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
             )
             .shadow(color: color.opacity(0.35), radius: size * 0.12, y: size * 0.05)
+            .accessibilityHidden(true)
     }
 }
 
@@ -77,6 +78,7 @@ struct SettingsCard<Content: View>: View {
     @ViewBuilder var content: Content
 
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -92,7 +94,9 @@ struct SettingsCard<Content: View>: View {
             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(scheme == .dark ? 0.10 : 0.07), lineWidth: 0.5)
+                    .strokeBorder(
+                        Color.primary.opacity(contrast == .increased ? 0.4 : scheme == .dark ? 0.10 : 0.07),
+                        lineWidth: contrast == .increased ? 1 : 0.5)
             )
             .shadow(color: .black.opacity(scheme == .dark ? 0.18 : 0.05), radius: 10, y: 3)
             if let footer {
@@ -139,10 +143,11 @@ struct SettingRow<Accessory: View>: View {
 /// The hairline between rows, starting after the icon.
 struct RowDivider: View {
     var inset: CGFloat = 54
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         Rectangle()
-            .fill(Color.primary.opacity(0.08))
+            .fill(Color.primary.opacity(contrast == .increased ? 0.3 : 0.08))
             .frame(height: 0.5)
             .padding(.leading, inset)
     }
@@ -192,8 +197,24 @@ struct RangeCapsule: View {
                     .frame(width: upperX - lowerX + height)
                     .offset(x: lowerX)
                     .shadow(color: .black.opacity(0.10), radius: 1.5, y: 0.5)
-                knob(symbol: "sun.min.fill").offset(x: lowerX)
-                knob(symbol: "sun.max.fill").offset(x: upperX)
+                knob(symbol: "sun.min.fill")
+                    .offset(x: lowerX)
+                    .accessibilityElement()
+                    .accessibilityLabel("Lowest brightness")
+                    .accessibilityValue("\(Int((lower * 100).rounded()))%")
+                    .accessibilityAdjustableAction { direction in
+                        let value = lower + (direction == .increment ? 0.05 : -0.05)
+                        onChange(value.clamped(to: 0...(upper - minimumGap)), upper)
+                    }
+                knob(symbol: "sun.max.fill")
+                    .offset(x: upperX)
+                    .accessibilityElement()
+                    .accessibilityLabel("Highest brightness")
+                    .accessibilityValue("\(Int((upper * 100).rounded()))%")
+                    .accessibilityAdjustableAction { direction in
+                        let value = upper + (direction == .increment ? 0.05 : -0.05)
+                        onChange(lower, value.clamped(to: (lower + minimumGap)...1))
+                    }
             }
             .contentShape(Capsule())
             .gesture(
@@ -211,9 +232,8 @@ struct RangeCapsule: View {
             )
         }
         .frame(height: height)
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Brightness range")
-        .accessibilityValue("\(Int(lower * 100))% to \(Int(upper * 100))%")
     }
 
     private func knob(symbol: String) -> some View {
