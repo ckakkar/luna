@@ -39,7 +39,9 @@ struct KeyboardCheck {
         let order = (0..<sliderCount).map { first + (sliderCount + offset - $0) % sliderCount }
         check(backward == order, "Shift-Tab goes bottom to top")
 
-        SliderKeyboard.shared.active = false  // what a click on any slider does
+        // A click (on the panel's header, clear of any control) hands control back to the mouse.
+        await click(in: panel, at: NSPoint(x: Metrics.panelMargin + 8, y: panel.frame.height - Metrics.panelMargin - 8))
+        check(!SliderKeyboard.shared.active, "a click ends keyboard mode")
         let clicked = positions()
         await press(124)
         check(positions() == clicked, "after the mouse takes over, arrows move nothing")
@@ -91,6 +93,22 @@ struct KeyboardCheck {
                     with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
                     windowNumber: NSApp.keyWindow?.windowNumber ?? 0, context: nil, characters: characters,
                     charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode)
+            else { continue }
+            NSApp.postEvent(event, atStart: false)
+        }
+        try? await Task.sleep(for: .milliseconds(Self.keyGap))
+    }
+
+    /// Time between key presses, like a quick typist. A busy Mac needs longer for SwiftUI to move the focus:
+    /// LUNA_KEYCHECK_GAP_MS sets it.
+    private static let keyGap = Int(ProcessInfo.processInfo.environment["LUNA_KEYCHECK_GAP_MS"] ?? "") ?? 250
+
+    private func click(in window: NSWindow, at point: NSPoint) async {
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            guard
+                let event = NSEvent.mouseEvent(
+                    with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
             else { continue }
             NSApp.postEvent(event, atStart: false)
         }

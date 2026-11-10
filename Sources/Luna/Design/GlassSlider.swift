@@ -84,11 +84,6 @@ struct GlassSlider: View {
         .overlay(
             Capsule().strokeBorder(Color.accentColor.opacity(keyboardFocus ? 0.85 : 0), lineWidth: 2).padding(-3)
         )
-        .onChange(of: focused) { _, isFocused in
-            // Tab turns keyboard mode on; focus macOS hands out for other reasons (the panel opening) turns it off.
-            // SwiftUI reports the change a moment later, often while the Tab's key-up is the current event.
-            if isFocused { keyboard.active = [.keyDown, .keyUp].contains(NSApp.currentEvent?.type) }
-        }
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
             guard keyboardFocus else { return .ignored }
             let up = press.key == .rightArrow || press.key == .upArrow
@@ -174,11 +169,37 @@ struct GlassSlider: View {
     }
 }
 
-/// Whether the keyboard is driving the sliders. Tab turns it on; any slider click or drag, or focus macOS
-/// assigns on its own (the panel opening), turns it off. Only then does the focused slider show its ring and
-/// take the arrow keys, so a slider the mouse last used never moves under the arrow keys by surprise.
+/// Whether the keyboard is driving the sliders. Pressing Tab in any of Luna's windows turns it on; any click
+/// (on a slider, a button, the menu bar icon that opens the panel) turns it off, and so does the panel opening.
+/// Only while it's on does the focused slider show its ring and take the arrow keys, so a slider macOS focused
+/// on its own, or one the mouse last used, never moves under the arrow keys by surprise. It watches the input
+/// itself rather than guessing from focus changes, which SwiftUI reports a moment after the event behind them.
 @MainActor @Observable
 final class SliderKeyboard {
     static let shared = SliderKeyboard()
     var active = false
+    @ObservationIgnored private var monitor: Any?
+
+    private init() {
+        monitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown], handler: sliderKeyboardInput)
+    }
+
+    /// A key press: Tab (or Shift-Tab) turns keyboard mode on, other keys leave it. A click turns it off.
+    fileprivate func note(keyDown: Bool, tab: Bool) {
+        if !keyDown {
+            active = false
+        } else if tab {
+            active = true
+        }
+    }
+}
+
+/// Local event monitors run on the main thread; the handler is built outside the main actor all the same, as
+/// every macOS callback in Luna is (a closure made inside a main-actor type traps if called off it).
+nonisolated private func sliderKeyboardInput(_ event: NSEvent) -> NSEvent? {
+    let keyDown = event.type == .keyDown
+    let tab = keyDown && event.keyCode == 48
+    MainActor.assumeIsolated { SliderKeyboard.shared.note(keyDown: keyDown, tab: tab) }
+    return event
 }

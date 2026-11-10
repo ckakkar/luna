@@ -45,6 +45,8 @@ struct PanelView: View {
         .scaleEffect(appeared ? 1 : 0.94, anchor: .top)
         .opacity(appeared ? 1 : 0)
         .onChange(of: model.panelOpenCount) {
+            // Whatever macOS focuses as the panel opens, the arrow keys wait for a Tab.
+            SliderKeyboard.shared.active = false
             guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
             appeared = false
             withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) { appeared = true }
