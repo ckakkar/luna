@@ -7,7 +7,7 @@ import Testing
 @testable import LunaCore
 
 @Suite @MainActor struct EnergyTests {
-    @Test func unchangedWatchTicksReuseOneRedBufferWithoutWrites() {
+    @Test func unchangedWatchTicksReuseTheirBuffersWithoutWrites() {
         let tables = FakeGammaTables()
         var nudges = 0
         let dimmer = Dimmer(gamma: tables.access, gammaDidChange: { _ in nudges += 1 })
@@ -20,7 +20,8 @@ import Testing
         #expect(nudges == 1)
         let checks = tables.reads.dropFirst(initialReads)
         #expect(checks.count == 120)
-        #expect(checks.allSatisfy { $0.capacity == 256 && !$0.green && !$0.blue })
+        // All three tables every time (macOS refuses a red-only read), into the same buffers.
+        #expect(checks.allSatisfy { $0.capacity == 256 && $0.green && $0.blue })
         #expect(Set(checks.map(\.redAddress)).count == 1)
     }
 
@@ -201,6 +202,8 @@ import Testing
                 reads.append(
                     Read(capacity: capacity, green: green != nil, blue: blue != nil, redAddress: UInt(bitPattern: red)))
                 guard readError == .success else { return readError }
+                // Like CoreGraphics on a real display: without all three tables the read fails (error 1001).
+                guard red != nil, green != nil, blue != nil else { return .failure }
                 let table = current[display] ?? profile
                 let size = emptyRead ? 0 : min(Int(capacity), table.red.count)
                 count?.pointee = UInt32(size)

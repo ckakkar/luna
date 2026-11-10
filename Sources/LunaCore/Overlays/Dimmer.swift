@@ -38,8 +38,11 @@ public final class Dimmer {
 
     private let gamma: GammaAccess
     private let gammaDidChange: ((CGDirectDisplayID) -> Void)?
-    // Only red's peak is checked. Reuse its storage instead of allocating three tables every second.
-    private var resetSamples = [CGGammaValue](repeating: 0, count: 256)
+    // The once-a-second check compares red's peak, but CGGetDisplayTransferByTable fails (1001) unless it
+    // gets all three tables, so it reads into three buffers kept for reuse rather than made every second.
+    private var resetRed = [CGGammaValue](repeating: 0, count: 256)
+    private var resetGreen = [CGGammaValue](repeating: 0, count: 256)
+    private var resetBlue = [CGGammaValue](repeating: 0, count: 256)
     private var originals: [CGDirectDisplayID: Table] = [:]
     private var gammaFactors: [CGDirectDisplayID: Double] = [:]
     private var shades: [CGDirectDisplayID: ClickThroughWindow] = [:]
@@ -73,8 +76,9 @@ public final class Dimmer {
         guard let factor = gammaFactors[display], let original = originals[display]
         else { return }
         var count: UInt32 = 0
-        guard gamma.read(display, 256, &resetSamples, nil, nil, &count) == .success, count > 0 else { return }
-        let current = Double(resetSamples.prefix(Int(count)).max() ?? 0)
+        guard gamma.read(display, 256, &resetRed, &resetGreen, &resetBlue, &count) == .success, count > 0
+        else { return }
+        let current = Double(resetRed.prefix(Int(count)).max() ?? 0)
         if abs(current - original.redPeak * factor) > 0.01 { applyGamma(factor, display) }
     }
 
