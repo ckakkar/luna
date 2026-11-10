@@ -6,7 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Keyboard control of the panel.** Tab to a slider and use the arrow keys (⌥ for fine steps), with a capsule focus ring. A click hands control back to the mouse.
+- **Developer tools:**
+  - `--preview --snapshot <file.png>` saves a picture of the preview and quits. It needs no Screen Recording permission.
+  - `make uicheck` drives the panel with real key events and checks the focus rules.
+
 ### Changed
+- **Nearly idle when idle.** With XDR on, Luna used about 0.8% CPU doing nothing; now it uses about 0.06% (measured on an LG 5K in HDR mode):
+  - The HDR trigger draws once and redraws only when something changes. `LUNA_EDR_TRIGGER_KEEPALIVE=1` restores the old 2 fps redraw.
+  - The menu bar moon redraws only when brightness or the display list changes.
+  - The XDR watchdog skips work when nothing has changed, and reacts at once to screen, wake and Space changes.
+  - Timers allow macOS to batch their wakeups.
+- **Panel:**
+  - Volume and contrast read as percentages.
+  - An expanded card shows how Luna drives the display, with an icon.
+  - The moon mark stays legible on light glass.
+  - A proper empty state when no displays are connected.
+- **Settings:**
+  - Each pane is in its own source file.
+  - VoiceOver can adjust each knob of the brightness range on its own and reads the daylight graph.
+  - Increase Contrast firms up card edges.
+  - Display names line up.
+- **Welcome:** respects Reduce Motion.
+- **For contributors:** `make preview` no longer quits your own Luna.
 - **A modern Settings.** A floating glass sidebar over a soft aurora, a large header on each pane, and frosted cards. Each row has a coloured icon, an explanation, and the panel's own controls: capsule switches, glass pills and Control Center sliders.
   - **Displays:** a two-knob brightness-range slider, and a hero card with a monitor that glows at the display's brightness.
   - **Auto brightness:** the modes are tiles over a redrawn daylight sky.
@@ -16,6 +39,7 @@ All notable changes to this project are documented here. The format follows
 - **Dependencies:** Sparkle 2.10.1; dmgbuild pinned to 1.6.7.
 
 ### Fixed
+- **Self-test:** checked macOS brightness against the slider without the display's brightness range, so it failed on displays with a custom range.
 From a second code review:
 - **DDC:** a read could run ahead of that control's pending write and undo it (asking for 90% ended at 50%).
 - **Turning displays back on:** a failed **Turn On** dropped the display's records, so it couldn't be retried.
