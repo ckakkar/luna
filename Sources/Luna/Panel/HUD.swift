@@ -18,6 +18,8 @@ final class HUD {
 
     private let state = State()
     private var window: NSPanel?
+    /// The indicator's window while it shows (for `--snapshot`).
+    var visibleWindow: NSWindow? { window?.isVisible == true ? window : nil }
     private var hideTask: Task<Void, Never>?
     private static let size = NSSize(width: 252, height: 50)
 

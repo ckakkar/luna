@@ -82,6 +82,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.keys.showBrightnessHUD(display)
                 }
             }
+            if let path = options.snapshot {
+                // The indicator fades after a moment and the backdrop sits behind the panel: catch each right.
+                let delay = options.snapshotDelay ?? (options.showHUD ? 2.6 : 3)
+                Snapshot.schedule(to: path, after: delay) { [weak self] in
+                    if options.showHUD, let hud = HUD.shared.visibleWindow { return .window(hud) }
+                    if let backdrop = self?.backdrop { return .stack(above: backdrop) }
+                    return Snapshot.largestWindow().map { .window($0) }
+                }
+            }
         } else if options.quiet {
             // Nothing on screen but the menu bar icon (scripted runs, like the update test).
         } else if !settings.hasOnboarded && !options.openPanel {
@@ -208,6 +217,9 @@ struct LaunchOptions {
     var maxHeight: CGFloat?
     var selfTest = false
     var quiet = false
+    /// `--snapshot <file.png>`: save a picture of the preview and quit (see `Snapshot`).
+    var snapshot: String?
+    var snapshotDelay: TimeInterval?
 
     init(arguments: [String]) {
         preview = arguments.contains("--preview")
@@ -230,6 +242,12 @@ struct LaunchOptions {
             let value = Double(arguments[index + 1])
         {
             maxHeight = CGFloat(value)
+        }
+        if let index = arguments.firstIndex(of: "--snapshot"), index + 1 < arguments.count {
+            snapshot = arguments[index + 1]
+        }
+        if let index = arguments.firstIndex(of: "--snapshot-delay"), index + 1 < arguments.count {
+            snapshotDelay = TimeInterval(arguments[index + 1])
         }
         selfTest = arguments.contains("--self-test")
         quiet = arguments.contains("--quiet")
