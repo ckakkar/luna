@@ -14,7 +14,9 @@ public final class EDROverlay: NSObject, MTKViewDelegate {
 
     /// How much to multiply the screen by, 1… the display's headroom.
     public var multiplier: Double {
-        didSet { updateClearColor() }
+        didSet {
+            if multiplier != oldValue { updateClearColor() }
+        }
     }
 
     public init?(screen: NSScreen, multiplier: Double) {
@@ -83,6 +85,18 @@ public final class EDROverlay: NSObject, MTKViewDelegate {
 /// lift the colour table into it. It sits on the top edge, clear of a rounded corner.
 @MainActor
 public final class EDRTrigger: NSObject, MTKViewDelegate {
+    /// The trigger draws once and redraws only when something changes (its value, its screen, the panel's
+    /// headroom: see `refresh()`), rather than at 2 fps. On the LG 5K in HDR mode the retained frame held the
+    /// headroom open (5.0×) for minutes, at 0.13% CPU idle instead of 0.61%. LUNA_EDR_TRIGGER_KEEPALIVE=1
+    /// brings back the 2 fps keepalive, for a panel that turns out to need it.
+    static let usesOnDemandDrawing = ProcessInfo.processInfo.environment["LUNA_EDR_TRIGGER_KEEPALIVE"] != "1"
+
+    /// Draws the trigger again: the watchdog calls this whenever the boost's inputs change (headroom closing
+    /// included), so a frame the system stopped counting is replaced within a second.
+    public func refresh() {
+        if Self.usesOnDemandDrawing { view.needsDisplay = true }
+    }
+
     private let window: ClickThroughWindow
     private let view: MTKView
     private let queue: MTLCommandQueue
@@ -92,7 +106,9 @@ public final class EDRTrigger: NSObject, MTKViewDelegate {
     public var value: Double {
         didSet {
             let v = max(1.05, value)
+            guard v != max(1.05, oldValue) else { return }
             view.clearColor = MTLClearColor(red: v, green: v, blue: v, alpha: 1)
+            if Self.usesOnDemandDrawing { view.needsDisplay = true }
         }
     }
 
@@ -112,9 +128,12 @@ public final class EDRTrigger: NSObject, MTKViewDelegate {
         let v = max(1.05, value)
         view.clearColor = MTLClearColor(red: v, green: v, blue: v, alpha: 1)
         view.preferredFramesPerSecond = 2
+        view.enableSetNeedsDisplay = Self.usesOnDemandDrawing
+        view.isPaused = Self.usesOnDemandDrawing
         view.delegate = self
         window.contentView = view
         window.orderFrontRegardless()
+        if Self.usesOnDemandDrawing { view.needsDisplay = true }
     }
 
     private static func frame(on screen: NSScreen, inset: CGFloat) -> NSRect {
@@ -122,8 +141,10 @@ public final class EDRTrigger: NSObject, MTKViewDelegate {
     }
 
     public func move(to screen: NSScreen) {
-        window.setFrame(Self.frame(on: screen, inset: inset), display: true)
+        let frame = Self.frame(on: screen, inset: inset)
+        if window.frame != frame { window.setFrame(frame, display: true) }
         window.orderFrontRegardless()
+        if Self.usesOnDemandDrawing { view.needsDisplay = true }
     }
 
     public func close() {

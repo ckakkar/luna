@@ -28,6 +28,10 @@ struct GlassSlider: View {
     @ViewState private var hovering = false
     @ViewState private var tappingIcon = false
     @ViewState private var lastMarkerSide: [Int] = []
+    @FocusState private var focused: Bool
+    /// Shared by every slider: whether the keyboard is driving them (see `SliderKeyboard`).
+    private var keyboard: SliderKeyboard { .shared }
+    private var keyboardFocus: Bool { focused && keyboard.active }
     @Environment(\.colorScheme) private var scheme
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -73,6 +77,20 @@ struct GlassSlider: View {
             .gesture(drag(travel: travel))
         }
         .frame(height: height)
+        // Keyboard: Tab to the slider, arrows to adjust (⌥ for fine steps), like the brightness keys.
+        .focusable()
+        .focused($focused)
+        .focusEffectDisabled()
+        .overlay(
+            Capsule().strokeBorder(Color.accentColor.opacity(keyboardFocus ? 0.85 : 0), lineWidth: 2).padding(-3)
+        )
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
+            guard keyboardFocus else { return .ignored }
+            let up = press.key == .rightArrow || press.key == .upArrow
+            let step = press.modifiers.contains(.option) ? 1.0 / 64 : 1.0 / 16
+            onChange((value + (up ? step : -step)).clamped(to: 0...1))
+            return .handled
+        }
         .scaleEffect(dragging ? 1.012 : 1)
         .animation(.luna, value: dragging)
         .animation(.luna, value: tone)
@@ -117,6 +135,9 @@ struct GlassSlider: View {
         DragGesture(minimumDistance: 0)
             .onChanged { gesture in
                 if !dragging {
+                    // The mouse took over: keyboard mode ends for every slider (no ring, arrows pass through),
+                    // whichever one still has focus, so a click can't leave any reacting to the arrow keys.
+                    keyboard.active = false
                     lastMarkerSide = markers.map { value >= $0 ? 1 : 0 }
                     if onIconTap != nil, gesture.startLocation.x < height {
                         tappingIcon = true
@@ -146,4 +167,39 @@ struct GlassSlider: View {
         }
         lastMarkerSide = sides
     }
+}
+
+/// Whether the keyboard is driving the sliders. Pressing Tab in any of Luna's windows turns it on; any click
+/// (on a slider, a button, the menu bar icon that opens the panel) turns it off, and so does the panel opening.
+/// Only while it's on does the focused slider show its ring and take the arrow keys, so a slider macOS focused
+/// on its own, or one the mouse last used, never moves under the arrow keys by surprise. It watches the input
+/// itself rather than guessing from focus changes, which SwiftUI reports a moment after the event behind them.
+@MainActor @Observable
+final class SliderKeyboard {
+    static let shared = SliderKeyboard()
+    var active = false
+    @ObservationIgnored private var monitor: Any?
+
+    private init() {
+        monitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown], handler: sliderKeyboardInput)
+    }
+
+    /// A key press: Tab (or Shift-Tab) turns keyboard mode on, other keys leave it. A click turns it off.
+    fileprivate func note(keyDown: Bool, tab: Bool) {
+        if !keyDown {
+            active = false
+        } else if tab {
+            active = true
+        }
+    }
+}
+
+/// Local event monitors run on the main thread; the handler is built outside the main actor all the same, as
+/// every macOS callback in Luna is (a closure made inside a main-actor type traps if called off it).
+nonisolated private func sliderKeyboardInput(_ event: NSEvent) -> NSEvent? {
+    let keyDown = event.type == .keyDown
+    let tab = keyDown && event.keyCode == 48
+    MainActor.assumeIsolated { SliderKeyboard.shared.note(keyDown: keyDown, tab: tab) }
+    return event
 }

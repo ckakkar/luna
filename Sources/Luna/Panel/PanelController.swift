@@ -1,5 +1,6 @@
 import AppKit
 import LunaCore
+import Observation
 import SwiftUI
 
 /// The menu bar icon and the panel that drops from it. A custom panel rather than `MenuBarExtra` so it can
@@ -13,6 +14,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var monitors: [Any] = []
     private var glyphPhase = -1.0
     private var glyphBadge = false
+    private var glyphDisplayID: CGDirectDisplayID?
+    private var glyphPointerTimer: Timer?
+    private var glyphObservationGeneration = 0
     /// The panel content's size, as SwiftUI last reported it.
     private var contentSize = NSSize(width: Metrics.panelWidth + 2 * Metrics.panelMargin, height: 300)
     /// Stays open whatever is clicked (preview and screenshots).
@@ -106,13 +110,42 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     /// The menu bar moon fills with the brightness of the display under the pointer.
     func updateGlyph() {
-        let display = model.controller.displayUnderPointer
-        let phase = display?.position ?? 0.6
-        let badge = model.availableUpdate != nil
-        guard abs(phase - glyphPhase) > 0.02 || badge != glyphBadge else { return }
-        glyphPhase = phase
-        glyphBadge = badge
-        statusItem.button?.image = MoonGlyph.menuBarImage(brightness: phase, badge: badge)
+        glyphObservationGeneration += 1
+        withObservationTracking(
+            {
+                // Track every display, including one the pointer may move onto, and changes to the list.
+                for display in model.controller.displays { _ = display.position }
+                let display = model.controller.displayUnderPointer
+                glyphDisplayID = display?.id
+                let phase = display?.position ?? 0.6
+                let badge = model.availableUpdate != nil
+                if abs(phase - glyphPhase) > 0.02 || badge != glyphBadge {
+                    glyphPhase = phase
+                    glyphBadge = badge
+                    statusItem.button?.image = MoonGlyph.menuBarImage(brightness: phase, badge: badge)
+                }
+                // A single screen has no pointer-screen changes to poll for. Brightness and badge changes
+                // always arrive through Observation; this timer only notices crossings on multi-display Macs.
+                if model.controller.displays.count > 1 {
+                    if glyphPointerTimer == nil {
+                        glyphPointerTimer = Timer.scheduledTimer(
+                            withTimeInterval: 1, repeats: true, block: glyphPointerTick(for: self))
+                        glyphPointerTimer?.tolerance = 0.2
+                    }
+                } else {
+                    glyphPointerTimer?.invalidate()
+                    glyphPointerTimer = nil
+                }
+            }, onChange: glyphObservationChanged(for: self, generation: glyphObservationGeneration))
+    }
+
+    fileprivate func glyphChanged(generation: Int) {
+        guard generation == glyphObservationGeneration else { return }
+        updateGlyph()
+    }
+
+    fileprivate func checkGlyphScreen() {
+        if model.controller.displayUnderPointer?.id != glyphDisplayID { updateGlyph() }
     }
 
     private func frameBelowStatusItem(size: NSSize) -> NSRect {
@@ -173,6 +206,21 @@ final class PanelController: NSObject, NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
         // Another of Luna's windows (Settings) took over.
         if NSApp.keyWindow != nil, NSApp.keyWindow !== panel { hide() }
+    }
+}
+
+nonisolated private func glyphObservationChanged(
+    for panel: PanelController, generation: Int
+) -> @Sendable () -> Void {
+    { [weak panel] in
+        // Observation's onChange runs before the write. Read the new values on the next main-actor turn.
+        Task { @MainActor in panel?.glyphChanged(generation: generation) }
+    }
+}
+
+nonisolated private func glyphPointerTick(for panel: PanelController) -> @Sendable (Timer) -> Void {
+    { [weak panel] _ in
+        Task { @MainActor in panel?.checkGlyphScreen() }
     }
 }
 

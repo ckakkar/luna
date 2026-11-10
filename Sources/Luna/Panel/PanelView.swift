@@ -45,6 +45,8 @@ struct PanelView: View {
         .scaleEffect(appeared ? 1 : 0.94, anchor: .top)
         .opacity(appeared ? 1 : 0)
         .onChange(of: model.panelOpenCount) {
+            // Whatever macOS focuses as the panel opens, the arrow keys wait for a Tab.
+            SliderKeyboard.shared.active = false
             guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
             appeared = false
             withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) { appeared = true }
@@ -78,11 +80,23 @@ struct PanelView: View {
             }
 
             if controller.displays.isEmpty {
-                Text("No displays found")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 60)
-                    .platter()
+                VStack(spacing: 5) {
+                    Image(systemName: "display.trianglebadge.exclamationmark")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom, 2)
+                    Text("No displays to control")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Luna shows each display here as soon as macOS finds it.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 18)
+                .frame(maxWidth: .infinity)
+                .platter()
             }
 
             QuickSettings()
@@ -194,7 +208,7 @@ private struct QuickSettings: View {
                     Text(caption)
                     if settings.autoMode == .sun, settings.location?.approximate ?? true, !controller.isPreview {
                         Text("·")
-                        Button("Use my location") { controller.auto.requestLocation() }
+                        Button("Use My Location") { controller.auto.requestLocation() }
                             .buttonStyle(.link)
                     }
                     Spacer()
@@ -299,6 +313,16 @@ private struct KeysBanner: View {
         }
         .padding(12)
         .platter()
+    }
+}
+
+/// A chip's icon and title: a small bold symbol before the words.
+struct ChipLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 5) {
+            configuration.icon.font(.system(size: 9.5, weight: .bold))
+            configuration.title
+        }
     }
 }
 

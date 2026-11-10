@@ -47,10 +47,22 @@ struct DisplayCard: View {
                     model.controller.turnOff(display)
                 }
             }
-            CircleIconButton(systemImage: "ellipsis", help: expanded ? "Fewer options" : "More options") {
+            CircleIconButton(
+                systemImage: "ellipsis",
+                help: expanded ? "Fewer options for \(display.name)" : "More options for \(display.name)"
+            ) {
                 expanded.toggle()
             }
             .rotationEffect(.degrees(expanded ? 90 : 0))
+        }
+    }
+
+    private var methodSymbol: String {
+        switch display.control {
+        case .apple: "apple.logo"
+        case .ddc: "cable.connector"
+        case .software: "circle.lefthalf.filled"
+        case .preview: "eye"
         }
     }
 
@@ -85,7 +97,7 @@ struct DisplayCard: View {
             value: display.muted ? 0 : display.volume,
             icon: display.muted ? "speaker.slash.fill" : "speaker.wave.3.fill",
             iconValue: display.muted ? nil : display.volume,
-            label: display.muted ? "Muted" : "\(Int((display.volume * 100).rounded()))",
+            label: display.muted ? "Muted" : "\(Int((display.volume * 100).rounded()))%",
             accessibilityName: "\(display.name) volume",
             onIconTap: { display.setMuted(!display.muted) }
         ) { display.setVolume($0) }
@@ -171,7 +183,7 @@ struct DisplayCard: View {
             if display.offersContrast {
                 GlassSlider(
                     value: display.contrast, icon: "circle.lefthalf.filled",
-                    label: "\(Int((display.contrast * 100).rounded()))", height: 26,
+                    label: "\(Int((display.contrast * 100).rounded()))%", height: 26,
                     accessibilityName: "\(display.name) contrast"
                 ) { display.setContrast($0) }
                 .help(
@@ -179,12 +191,22 @@ struct DisplayCard: View {
                         ? "Contrast also follows brightness (change this in Settings)" : "Contrast")
             }
             HStack {
-                Text(display.control.label)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    Image(systemName: methodSymbol).font(.system(size: 10, weight: .semibold))
+                    Text(display.control.label)
+                }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .help("How Luna changes this display's brightness")
+                .accessibilityElement(children: .combine)
                 Spacer()
-                Button("Display Settings…") { model.openSettings(.displays(display.id)) }
-                    .buttonStyle(ChipButtonStyle())
+                Button {
+                    model.openSettings(.displays(display.id))
+                } label: {
+                    Label("Display Settings…", systemImage: "slider.horizontal.3")
+                        .labelStyle(ChipLabelStyle())
+                }
+                .buttonStyle(ChipButtonStyle())
             }
         }
         .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))

@@ -57,9 +57,17 @@ final class SelfTest {
         try? await Task.sleep(for: .milliseconds(600))
         switch display.control {
         case .apple:
-            let actual = AppleNative.brightness(display.id) ?? -1
+            // What macOS should report is the level within the display's brightness range (a lowest setting of
+            // 40% puts 80% at 0.88), and it may still be gliding there.
+            let expected = display.hardwareBrightness
+            var actual = AppleNative.brightness(display.id) ?? -1
+            for _ in 0..<14 where abs(actual - expected) >= 0.03 {
+                try? await Task.sleep(for: .milliseconds(100))
+                actual = AppleNative.brightness(display.id) ?? -1
+            }
             check(
-                abs(actual - target.brightness) < 0.03, "\(display.name): brightness set through macOS (\(fmt(actual)))"
+                abs(actual - expected) < 0.03,
+                "\(display.name): brightness set through macOS (\(fmt(actual)), expected \(fmt(expected)))"
             )
             // Changes from outside Luna (keys, Control Center) reach the slider.
             AppleNative.setBrightness(original.brightness, for: display.id)

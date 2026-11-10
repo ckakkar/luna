@@ -17,13 +17,20 @@ make icons      # re-render the app icon from scripts/app-icon.swift
 
 `make selftest` (`Luna --self-test`) drives the real app against the connected displays, checks each feature (brightness through macOS or DDC, following outside changes, dimming below 0%, XDR, rounded corners, the panel, indicator and Settings, and a clean restore on quit) and exits with the number of failures. The screen flickers while it runs.
 
-`make preview` touches no hardware. Its options: `--dark`/`--light`, `--displays 1…3`, `--expanded` (cards show their extra options), `--sun`, `--backdrop` (a gradient behind the glass, for screenshots), `--settings [general|displays|auto|keyboard|about]`, `--welcome`, `--hud`.
+`make preview` touches no hardware. Its options: `--dark`/`--light`, `--displays 0…3`, `--expanded` (cards show their extra options), `--sun`, `--backdrop` (a gradient behind the glass, for screenshots), `--settings [general|displays|auto|keyboard|about]`, `--welcome`, `--hud`, `--update` (the update card).
+
+To save a picture instead of opening a window, add `--snapshot <file.png>`: Luna captures its own window (the panel over the backdrop, Settings, the welcome window or the indicator) and quits. It needs no Screen Recording permission, so it works from any terminal or script:
+
+```sh
+make preview ARGS="--dark --displays 3 --backdrop --snapshot panel.png"
+```
 
 ## Expectations
 
 - `make check` must pass: `swift format lint --strict` (config in `.swift-format`), a warning-free build in the Swift 6 language mode, and the tests. CI enforces all three.
 - Logic that can be tested without hardware lives in `LunaCore` and gets tests in `Tests/LunaCoreTests`. That covers DDC packets, display matching, slider zones, curves, solar maths and settings.
-- UI changes: look at them with `make preview` in light and dark, with one and three displays.
+- UI changes: look at them with `make preview` in light and dark, with none, one and three displays, and with Increase Contrast and Reduce Motion on.
+- Panel changes: `make uicheck` drives the sliders with real key events (Tab, Shift-Tab, arrows) in a preview and checks the focus rules. It needs no permissions.
 - Hardware changes: run `make selftest` on a real display.
 - Callbacks from macOS (C function pointers, DisplayServices, Carbon) are plain `nonisolated` functions that hop to the main actor. A closure written inside main-actor code inherits that isolation, and Swift 6 traps at runtime when macOS calls it from another thread; Luna 0.1.4 crashed at launch this way.
 - Private macOS APIs go through `Sources/CPrivate` only, looked up with `dlsym`, so a missing symbol degrades a feature instead of crashing.

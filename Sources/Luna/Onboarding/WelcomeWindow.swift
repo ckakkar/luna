@@ -130,7 +130,12 @@ struct WelcomeView: View {
         .focusEffectDisabled()
         .animation(.luna, value: model.keysEnabled)
         .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.1)) { appeared = true }
+            // The icon springs in, or simply appears with Reduce Motion on.
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                appeared = true
+            } else {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.1)) { appeared = true }
+            }
         }
     }
 }

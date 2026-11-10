@@ -362,7 +362,8 @@ public final class Display: Identifiable {
     /// Contrast follows brightness down to 60% of its normal value.
     private var linkedContrastFactor: Double { 0.6 + 0.4 * level.brightness }
 
-    private var hardwareBrightness: Double {
+    /// The brightness sent to the display: the level within this display's brightness range.
+    public var hardwareBrightness: Double {
         settings.minBrightness + level.brightness * (settings.maxBrightness - settings.minBrightness)
     }
 
@@ -415,17 +416,38 @@ public final class Display: Identifiable {
         Dimmer.shared.set(factor, for: id, method: dimMethod)
     }
 
+    struct BoostInputs: Equatable {
+        var multiplier: Double
+        var headroom: Double
+        var method: Dimmer.Method
+
+        var needsTrigger: Bool { headroom < multiplier - 0.05 }
+        var gammaFactor: Double { headroom > 1.05 ? pow(min(multiplier, headroom), 1 / 2.2) : 1 }
+    }
+
+    @ObservationIgnored private var boostScreen: NSScreen?
+    @ObservationIgnored private var boostInputs: BoostInputs?
+    @ObservationIgnored private var boostObservers: [(NotificationCenter, NSObjectProtocol)] = []
+
     /// XDR: brighter than 100% by lifting the display's colour table into its HDR headroom. The table is applied
     /// by the display pipeline after macOS has composited everything, so the boost holds through Space swipes,
     /// Mission Control and full-screen video (Netflix), which an overlay can't reach. Displays without a
     /// colour table (AirPlay, DisplayLink) fall back to the multiply overlay.
-    private func updateBoost() {
-        guard xdr, isXDRCapable, level.boost > 0.001, let screen = NSScreen.with(displayID: id) else {
+    private func updateBoost(on cachedScreen: NSScreen? = nil) {
+        guard xdr, isXDRCapable, level.boost > 0.001,
+            let screen = cachedScreen ?? NSScreen.with(displayID: id)
+        else {
             stopBoost()
             return
         }
         // Past ~3.2× highlights clip and colours wash out, even where the panel has more headroom.
         let multiplier = xdrMultiplier
+        let inputs = BoostInputs(
+            multiplier: multiplier, headroom: Double(screen.maximumExtendedDynamicRangeColorComponentValue),
+            method: dimMethod)
+        boostScreen = screen
+        boostInputs = inputs
+        watchBoostEvents()
 
         guard dimMethod == .gamma, Dimmer.shared.hasColourTable(id) else {
             gammaBoost = 1
@@ -439,16 +461,17 @@ public final class Display: Identifiable {
         edr?.close()
         edr = nil
 
-        let headroom = Double(screen.maximumExtendedDynamicRangeColorComponentValue)
         // An XDR panel opens its headroom while HDR content is on screen, as far as that content asks for: the
         // trigger is that content.
-        if headroom < multiplier - 0.05, edrTrigger == nil {
+        if inputs.needsTrigger, edrTrigger == nil {
             edrTrigger = EDRTrigger(
                 screen: screen, value: multiplier, avoidingCorner: app.roundedCorners ? app.cornerRadius * 1.6 : 0)
         }
         edrTrigger?.value = multiplier
+        // updateBoost runs when an input changed (headroom too): draw the trigger again in case that's why.
+        edrTrigger?.refresh()
         // The table works on gamma-encoded values, so the lift for a given gain in light is its 2.2th root.
-        gammaBoost = headroom > 1.05 ? pow(min(multiplier, headroom), 1 / 2.2) : 1
+        gammaBoost = inputs.gammaFactor
         startBoostWatch()
     }
 
@@ -456,14 +479,55 @@ public final class Display: Identifiable {
     /// headroom moves with the backlight; checking every second brings a lost boost back within a moment.
     private func startBoostWatch() {
         guard boostWatch == nil else { return }
-        boostWatch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshBoost() }
+        boostWatch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true, block: boostWatchTick(for: self))
+        boostWatch?.tolerance = 0.1
+    }
+
+    private func watchBoostEvents() {
+        guard boostObservers.isEmpty else { return }
+        boostObservers = Self.observeBoostEnvironment { [weak self] in
+            self?.refreshBoost(environmentChanged: true)
         }
     }
 
-    private func refreshBoost() {
+    /// Separate notification wiring from display I/O so thread hops and event coverage can be tested.
+    static func observeBoostEnvironment(
+        center: NotificationCenter = .default, workspace: NotificationCenter = NSWorkspace.shared.notificationCenter,
+        refresh: @escaping @MainActor @Sendable () -> Void
+    ) -> [(NotificationCenter, NSObjectProtocol)] {
+        let events: [(NotificationCenter, Notification.Name)] = [
+            (center, NSApplication.didChangeScreenParametersNotification),
+            (workspace, NSWorkspace.didWakeNotification),
+            (workspace, NSWorkspace.screensDidWakeNotification),
+            (workspace, NSWorkspace.activeSpaceDidChangeNotification),
+        ]
+        return events.map { center, name in
+            let observer = center.addObserver(
+                forName: name, object: nil, queue: nil, using: boostEnvironmentChanged(refresh: refresh))
+            return (center, observer)
+        }
+    }
+
+    fileprivate func refreshBoost(environmentChanged: Bool = false) {
+        // A callback already queued before detach/stop must not recreate a boost on a removed display.
+        guard boostInputs != nil else { return }
         let before = gammaBoost
-        updateBoost()
+        if environmentChanged {
+            // AppKit posts the screen-parameters notification when current EDR headroom changes too.
+            boostScreen = nil
+            updateBoost()
+            if let screen = boostScreen {
+                edr?.move(to: screen)
+                edrTrigger?.move(to: screen)
+            }
+        } else if let screen = boostScreen {
+            let inputs = BoostInputs(
+                multiplier: xdrMultiplier, headroom: Double(screen.maximumExtendedDynamicRangeColorComponentValue),
+                method: dimMethod)
+            if inputs != boostInputs || (inputs.needsTrigger && edrTrigger == nil && edr == nil) {
+                updateBoost(on: screen)
+            }
+        }
         if abs(gammaBoost - before) > 0.001 {
             applySoftware()
         } else {
@@ -474,6 +538,10 @@ public final class Display: Identifiable {
     private func stopBoost() {
         boostWatch?.invalidate()
         boostWatch = nil
+        for (center, observer) in boostObservers { center.removeObserver(observer) }
+        boostObservers.removeAll()
+        boostScreen = nil
+        boostInputs = nil
         edrTrigger?.close()
         edrTrigger = nil
         edr?.close()
@@ -587,5 +655,20 @@ public final class Display: Identifiable {
             : responsive ? "null messages (it hears DDC but doesn't report values)" : "nothing"
         NSLog("Luna: %@ answered DDC with %@; brightness via %@", name, summary, control.label)
         applyBrightness()
+    }
+}
+
+// macOS can deliver these on its own thread. Construct the callbacks outside the main actor, then hop.
+nonisolated private func boostWatchTick(for display: Display) -> @Sendable (Timer) -> Void {
+    { [weak display] _ in
+        Task { @MainActor in display?.refreshBoost() }
+    }
+}
+
+nonisolated private func boostEnvironmentChanged(
+    refresh: @escaping @MainActor @Sendable () -> Void
+) -> @Sendable (Notification) -> Void {
+    { _ in
+        Task { @MainActor in refresh() }
     }
 }

@@ -17,14 +17,41 @@ public final class Dimmer {
         var red: [CGGammaValue]
         var green: [CGGammaValue]
         var blue: [CGGammaValue]
+        var redPeak: Double
     }
 
+    /// The system calls are replaceable so reset recovery can be tested without touching a display.
+    struct GammaAccess {
+        var read:
+            (
+                CGDirectDisplayID, UInt32, UnsafeMutablePointer<CGGammaValue>?, UnsafeMutablePointer<CGGammaValue>?,
+                UnsafeMutablePointer<CGGammaValue>?, UnsafeMutablePointer<UInt32>?
+            ) -> CGError =
+                CGGetDisplayTransferByTable
+        var write:
+            (
+                CGDirectDisplayID, UInt32, UnsafePointer<CGGammaValue>?, UnsafePointer<CGGammaValue>?,
+                UnsafePointer<CGGammaValue>?
+            ) -> CGError = CGSetDisplayTransferByTable
+        var restore: () -> Void = CGDisplayRestoreColorSyncSettings
+    }
+
+    private let gamma: GammaAccess
+    private let gammaDidChange: ((CGDirectDisplayID) -> Void)?
+    // The once-a-second check compares red's peak, but CGGetDisplayTransferByTable fails (1001) unless it
+    // gets all three tables, so it reads into three buffers kept for reuse rather than made every second.
+    private var resetRed = [CGGammaValue](repeating: 0, count: 256)
+    private var resetGreen = [CGGammaValue](repeating: 0, count: 256)
+    private var resetBlue = [CGGammaValue](repeating: 0, count: 256)
     private var originals: [CGDirectDisplayID: Table] = [:]
     private var gammaFactors: [CGDirectDisplayID: Double] = [:]
     private var shades: [CGDirectDisplayID: ClickThroughWindow] = [:]
     private var nudgers: [CGDirectDisplayID: ClickThroughWindow] = [:]
 
-    private init() {}
+    init(gamma: GammaAccess = GammaAccess(), gammaDidChange: ((CGDirectDisplayID) -> Void)? = nil) {
+        self.gamma = gamma
+        self.gammaDidChange = gammaDidChange
+    }
 
     /// Lets `factor` of the display's light through (1 = untouched, above 1 = XDR, colour table only).
     public func set(_ factor: Double, for display: CGDirectDisplayID, method: Method) {
@@ -46,16 +73,13 @@ public final class Dimmer {
 
     /// Puts Luna's table back if something (macOS, another app) replaced it.
     public func restoreIfReset(_ display: CGDirectDisplayID) {
-        guard let factor = gammaFactors[display], let original = original(display),
-            let expected = original.red.max().map({ Double($0) * factor })
+        guard let factor = gammaFactors[display], let original = originals[display]
         else { return }
-        var red = [CGGammaValue](repeating: 0, count: 256)
-        var green = red
-        var blue = red
         var count: UInt32 = 0
-        guard CGGetDisplayTransferByTable(display, 256, &red, &green, &blue, &count) == .success else { return }
-        let current = Double(red.prefix(Int(count)).max() ?? 0)
-        if abs(current - expected) > 0.01 { applyGamma(factor, display) }
+        guard gamma.read(display, 256, &resetRed, &resetGreen, &resetBlue, &count) == .success, count > 0
+        else { return }
+        let current = Double(resetRed.prefix(Int(count)).max() ?? 0)
+        if abs(current - original.redPeak * factor) > 0.01 { applyGamma(factor, display) }
     }
 
     public func reset(_ display: CGDirectDisplayID) {
@@ -68,7 +92,7 @@ public final class Dimmer {
         for display in Array(shades.keys) { removeShade(display) }
         if !gammaFactors.isEmpty {
             gammaFactors.removeAll()
-            CGDisplayRestoreColorSyncSettings()
+            gamma.restore()
         }
         for window in nudgers.values { window.close() }
         nudgers.removeAll()
@@ -78,7 +102,7 @@ public final class Dimmer {
     public func reapply() {
         // Start from the system's own tables: if Luna's were still applied, capturing them as the originals
         // would dim or boost twice.
-        if !gammaFactors.isEmpty { CGDisplayRestoreColorSyncSettings() }
+        if !gammaFactors.isEmpty { gamma.restore() }
         originals.removeAll()
         for (display, factor) in gammaFactors { applyGamma(factor, display) }
         for (display, shade) in shades {
@@ -103,16 +127,16 @@ public final class Dimmer {
         let red = original.red.map { $0 * scale }
         let green = original.green.map { $0 * scale }
         let blue = original.blue.map { $0 * scale }
-        CGSetDisplayTransferByTable(display, UInt32(red.count), red, green, blue)
-        nudge(display)
+        _ = gamma.write(display, UInt32(red.count), red, green, blue)
+        notifyGammaChanged(display)
     }
 
     private func restoreGamma(_ display: CGDirectDisplayID) {
         gammaFactors[display] = nil
         // Restores every display, so put the others' dimming back.
-        CGDisplayRestoreColorSyncSettings()
+        gamma.restore()
         for (other, factor) in gammaFactors { applyGamma(factor, other) }
-        nudge(display)
+        notifyGammaChanged(display)
     }
 
     private func original(_ display: CGDirectDisplayID) -> Table? {
@@ -122,17 +146,25 @@ public final class Dimmer {
         var green = red
         var blue = red
         var count: UInt32 = 0
-        guard CGGetDisplayTransferByTable(display, capacity, &red, &green, &blue, &count) == .success, count > 0
+        guard gamma.read(display, capacity, &red, &green, &blue, &count) == .success, count > 0
         else { return nil }
         let table = Table(
             red: Array(red.prefix(Int(count))), green: Array(green.prefix(Int(count))),
-            blue: Array(blue.prefix(Int(count))))
+            blue: Array(blue.prefix(Int(count))), redPeak: Double(red.prefix(Int(count)).max() ?? 0))
         originals[display] = table
         return table
     }
 
     /// WindowServer only applies a new gamma table when something on screen redraws. Flicker a 1-pixel,
     /// nearly invisible window so the change shows at once.
+    private func notifyGammaChanged(_ display: CGDirectDisplayID) {
+        if let gammaDidChange {
+            gammaDidChange(display)
+        } else {
+            nudge(display)
+        }
+    }
+
     private func nudge(_ display: CGDirectDisplayID) {
         guard let screen = NSScreen.with(displayID: display) else { return }
         let window =

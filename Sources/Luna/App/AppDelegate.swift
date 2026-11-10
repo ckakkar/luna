@@ -10,7 +10,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var welcome: WelcomeWindowController?
     private var keys: KeyController!
     private var signalSources: [DispatchSourceSignal] = []
-    private var glyphTimer: Timer?
     private var backdrop: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -56,10 +55,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !options.preview { keys.start() }
         watchSignals()
 
-        glyphTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.panel.updateGlyph() }
-        }
-
         if options.selfTest {
             let test = SelfTest(model: model, panel: panel, keys: keys, settingsWindow: settingsWindow)
             Task { await test.run() }
@@ -82,6 +77,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.keys.showBrightnessHUD(display)
                 }
             }
+            if options.keyboardCheck {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                    guard let model = self?.model else { return }
+                    var check = KeyboardCheck(model: model)
+                    Task { await check.run() }
+                }
+            }
+            if let path = options.snapshot {
+                // The indicator fades after a moment and the backdrop sits behind the panel: catch each right.
+                let delay = options.snapshotDelay ?? (options.showHUD ? 2.6 : 3)
+                Snapshot.schedule(to: path, after: delay) { [weak self] in
+                    if options.showHUD, let hud = HUD.shared.visibleWindow { return .window(hud) }
+                    if let backdrop = self?.backdrop { return .stack(above: backdrop) }
+                    return Snapshot.largestWindow().map { .window($0) }
+                }
+            }
         } else if options.quiet {
             // Nothing on screen but the menu bar icon (scripted runs, like the update test).
         } else if !settings.hasOnboarded && !options.openPanel {
@@ -102,19 +113,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// `--preview --backdrop`: a twilight gradient behind the panel, so screenshots show the glass over
-    /// something without showing anyone's desktop.
+    /// something without showing anyone's desktop. It frames the panel with a margin all round, and follows
+    /// the panel as it grows (expanded cards, more displays).
     private func showBackdrop() {
-        guard let screen = NSScreen.main else { return }
-        let size = NSSize(width: 560, height: 980)
-        let frame = NSRect(
-            x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.midY - size.height / 2,
-            width: size.width, height: size.height)
-        let window = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: backdropFrame(), styleMask: .borderless, backing: .buffered, defer: false)
         window.level = NSWindow.Level(NSWindow.Level.statusBar.rawValue - 1)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: Backdrop())
         window.orderFrontRegardless()
         backdrop = window
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification, object: panelWindow, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let backdrop = self.backdrop else { return }
+                backdrop.setFrame(self.backdropFrame(), display: true)
+            }
+        }
+    }
+
+    private var panelWindow: NSWindow? { NSApp.windows.first { $0 is LunaPanel } }
+
+    private func backdropFrame() -> NSRect {
+        panelWindow?.frame.insetBy(dx: -64, dy: -56) ?? .zero
     }
 
     private func showWelcome() {
@@ -208,6 +229,11 @@ struct LaunchOptions {
     var maxHeight: CGFloat?
     var selfTest = false
     var quiet = false
+    /// `--snapshot <file.png>`: save a picture of the preview and quit (see `Snapshot`).
+    var snapshot: String?
+    var snapshotDelay: TimeInterval?
+    /// `--keyboard-check`: drive the preview panel's sliders with the keyboard and report (see `KeyboardCheck`).
+    var keyboardCheck = false
 
     init(arguments: [String]) {
         preview = arguments.contains("--preview")
@@ -216,7 +242,7 @@ struct LaunchOptions {
         if let index = arguments.firstIndex(of: "--displays"), index + 1 < arguments.count,
             let count = Int(arguments[index + 1])
         {
-            displayCount = min(max(count, 1), PreviewDisplay.samples.count)
+            displayCount = min(max(count, 0), PreviewDisplay.samples.count)
         }
         if arguments.contains("--sun") { autoMode = .sun }
         showSettings = arguments.contains("--settings")
@@ -231,6 +257,13 @@ struct LaunchOptions {
         {
             maxHeight = CGFloat(value)
         }
+        if let index = arguments.firstIndex(of: "--snapshot"), index + 1 < arguments.count {
+            snapshot = arguments[index + 1]
+        }
+        if let index = arguments.firstIndex(of: "--snapshot-delay"), index + 1 < arguments.count {
+            snapshotDelay = TimeInterval(arguments[index + 1])
+        }
+        keyboardCheck = arguments.contains("--keyboard-check")
         selfTest = arguments.contains("--self-test")
         quiet = arguments.contains("--quiet")
         if let index = arguments.firstIndex(of: "--settings"), index + 1 < arguments.count {
