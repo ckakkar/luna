@@ -138,6 +138,9 @@ struct GlassSlider: View {
         DragGesture(minimumDistance: 0)
             .onChanged { gesture in
                 if !dragging {
+                    // The mouse took over: the slider leaves keyboard mode (no ring, arrows pass through) even
+                    // though it keeps focus, so a click can't leave it reacting to the arrow keys.
+                    keyboardFocus = false
                     lastMarkerSide = markers.map { value >= $0 ? 1 : 0 }
                     if onIconTap != nil, gesture.startLocation.x < height {
                         tappingIcon = true
