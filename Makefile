@@ -17,11 +17,11 @@ run: ## Build a debug Luna.app and open it (quit the installed Luna first)
 	open build/debug/Luna.app
 
 preview: ## The panel with made-up displays, for design work (ARGS="--dark --displays 3 --settings")
-	@pkill -x Luna 2>/dev/null || true
+	@pkill -f 'build/debug/Luna.app/Contents/MacOS/Luna --preview' 2>/dev/null || true  # earlier previews only
 	scripts/build-app.sh --debug --out build/debug
 	build/debug/Luna.app/Contents/MacOS/Luna --preview $(ARGS) &
 
-selftest: ## Drive the real app against your displays and check every feature (the screen flickers)
+selftest: ## Drive the real app against your displays and check every feature (quits the installed Luna; the screen flickers)
 	@pkill -x Luna 2>/dev/null || true
 	scripts/build-app.sh --out build/test
 	build/test/Luna.app/Contents/MacOS/Luna --self-test
