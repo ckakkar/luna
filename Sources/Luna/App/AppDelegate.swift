@@ -111,19 +111,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// `--preview --backdrop`: a twilight gradient behind the panel, so screenshots show the glass over
-    /// something without showing anyone's desktop.
+    /// something without showing anyone's desktop. It frames the panel with a margin all round, and follows
+    /// the panel as it grows (expanded cards, more displays).
     private func showBackdrop() {
-        guard let screen = NSScreen.main else { return }
-        let size = NSSize(width: 560, height: 980)
-        let frame = NSRect(
-            x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.midY - size.height / 2,
-            width: size.width, height: size.height)
-        let window = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: backdropFrame(), styleMask: .borderless, backing: .buffered, defer: false)
         window.level = NSWindow.Level(NSWindow.Level.statusBar.rawValue - 1)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: Backdrop())
         window.orderFrontRegardless()
         backdrop = window
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification, object: panelWindow, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let backdrop = self.backdrop else { return }
+                backdrop.setFrame(self.backdropFrame(), display: true)
+            }
+        }
+    }
+
+    private var panelWindow: NSWindow? { NSApp.windows.first { $0 is LunaPanel } }
+
+    private func backdropFrame() -> NSRect {
+        panelWindow?.frame.insetBy(dx: -64, dy: -56) ?? .zero
     }
 
     private func showWelcome() {
@@ -228,7 +238,7 @@ struct LaunchOptions {
         if let index = arguments.firstIndex(of: "--displays"), index + 1 < arguments.count,
             let count = Int(arguments[index + 1])
         {
-            displayCount = min(max(count, 1), PreviewDisplay.samples.count)
+            displayCount = min(max(count, 0), PreviewDisplay.samples.count)
         }
         if arguments.contains("--sun") { autoMode = .sun }
         showSettings = arguments.contains("--settings")

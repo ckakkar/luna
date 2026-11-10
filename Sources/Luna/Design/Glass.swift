@@ -157,15 +157,19 @@ struct PanelSwitchStyle: ToggleStyle {
 /// Luna's mark for the panel header: the menu bar crescent in moonlight colours.
 struct LunaMark: View {
     var size: CGFloat = 18
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        // Pale moonlight reads on dark glass; on light glass the same hues go deeper.
+        let colors =
+            scheme == .dark
+            ? [Color(red: 0.62, green: 0.60, blue: 1.0), Color(red: 1.0, green: 0.83, blue: 0.55)]
+            : [Color(red: 0.36, green: 0.33, blue: 0.86), Color(red: 0.93, green: 0.55, blue: 0.22)]
         Image(nsImage: MoonGlyph.menuBarImage(brightness: 0.45))
             .renderingMode(.template)
             .resizable()
             .frame(width: size, height: size)
-            .foregroundStyle(
-                LinearGradient(
-                    colors: [Color(red: 0.62, green: 0.60, blue: 1.0), Color(red: 1.0, green: 0.83, blue: 0.55)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing))
+            .foregroundStyle(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+            .accessibilityHidden(true)
     }
 }

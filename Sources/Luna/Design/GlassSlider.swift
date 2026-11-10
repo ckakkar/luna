@@ -28,6 +28,10 @@ struct GlassSlider: View {
     @ViewState private var hovering = false
     @ViewState private var tappingIcon = false
     @ViewState private var lastMarkerSide: [Int] = []
+    @FocusState private var focused: Bool
+    /// Focus that came from the keyboard (Tab). macOS also focuses a slider when the panel opens or one is
+    /// clicked; that focus shows no ring and doesn't take the arrow keys.
+    @ViewState private var keyboardFocus = false
     @Environment(\.colorScheme) private var scheme
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -73,6 +77,23 @@ struct GlassSlider: View {
             .gesture(drag(travel: travel))
         }
         .frame(height: height)
+        // Keyboard: Tab to the slider, arrows to adjust (⌥ for fine steps), like the brightness keys.
+        .focusable()
+        .focused($focused)
+        .focusEffectDisabled()
+        .overlay(
+            Capsule().strokeBorder(Color.accentColor.opacity(keyboardFocus ? 0.85 : 0), lineWidth: 2).padding(-3)
+        )
+        .onChange(of: focused) { _, isFocused in
+            keyboardFocus = isFocused && NSApp.currentEvent?.type == .keyDown
+        }
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
+            guard keyboardFocus else { return .ignored }
+            let up = press.key == .rightArrow || press.key == .upArrow
+            let step = press.modifiers.contains(.option) ? 1.0 / 64 : 1.0 / 16
+            onChange((value + (up ? step : -step)).clamped(to: 0...1))
+            return .handled
+        }
         .scaleEffect(dragging ? 1.012 : 1)
         .animation(.luna, value: dragging)
         .animation(.luna, value: tone)
